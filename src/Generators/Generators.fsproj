@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Common.fs" />
+    <Compile Include="Equity.fs" />
+    <Compile Include="Rates.fs" />
+    <Compile Include="AAA.Common.fs" />
+    <Compile Include="AAA.Rates.fs" />
+    <Compile Include="AAA.Equity.fs" />
+    <Compile Include="AAA.Bonds.fs" />
+    <Compile Include="AAA.Selection.fs" />
+    <Compile Include="AAA.Generator.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Core.fsproj" />
+  </ItemGroup>
+
+</Project>

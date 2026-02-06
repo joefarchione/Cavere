@@ -1,0 +1,326 @@
+syntax = "proto3";
+package cavere;
+option csharp_namespace = "Cavere.Grpc";
+
+service SimulationService {
+  // Simple simulation
+  rpc Fold (SimulationRequest)          returns (FoldResponse);
+  rpc FoldWatch (WatchRequest)          returns (WatchResponse);
+  rpc Scan (SimulationRequest)          returns (ScanResponse);
+  rpc StreamScan (SimulationRequest)    returns (stream ScanChunk);
+
+  // Batch simulation
+  rpc BatchFold (BatchRequest)          returns (FoldResponse);
+  rpc BatchFoldWatch (BatchWatchRequest) returns (WatchResponse);
+  rpc BatchFoldMeans (BatchRequest)     returns (FoldResponse);
+  rpc StreamBatchFold (BatchRequest)    returns (stream FoldChunk);
+
+  // Session management
+  rpc CreateSession (CreateSessionRequest)  returns (SessionResponse);
+  rpc DestroySession (SessionId)            returns (Empty);
+
+  // Utility
+  rpc GetSource (ModelSpec)             returns (SourceResponse);
+}
+
+// Top-level requests
+
+message SimulationRequest {
+  ModelSpec model = 1;
+  int32 num_scenarios = 2;
+  DeviceType device = 3;
+}
+
+message WatchRequest {
+  ModelSpec model = 1;
+  int32 num_scenarios = 2;
+  DeviceType device = 3;
+  Frequency frequency = 4;
+}
+
+message BatchRequest {
+  ModelSpec model = 1;
+  int32 num_scenarios = 2;
+  DeviceType device = 3;
+  repeated float batch_values = 4;
+}
+
+message BatchWatchRequest {
+  ModelSpec model = 1;
+  int32 num_scenarios = 2;
+  DeviceType device = 3;
+  repeated float batch_values = 4;
+  Frequency frequency = 5;
+}
+
+message CreateSessionRequest {
+  DeviceType device = 1;
+  int32 num_scenarios = 2;
+  int32 steps = 3;
+}
+
+message SessionId {
+  string id = 1;
+}
+
+message SessionResponse {
+  string id = 1;
+}
+
+message Empty {}
+
+// Model specification
+
+message ModelSpec {
+  oneof model {
+    GBMModel gbm = 1;
+    GBMLocalVolModel gbm_local_vol = 2;
+    HestonModel heston = 3;
+    VasicekModel vasicek = 4;
+    CIRModel cir = 5;
+    CIRPPModel cirpp = 6;
+    MultiAssetHestonModel multi_asset_heston = 7;
+    CustomModel custom = 8;
+  }
+  repeated string observers = 10;
+}
+
+// Model templates
+
+message GBMModel {
+  float spot = 1;
+  float rate = 2;
+  float vol = 3;
+  int32 steps = 4;
+  PayoffSpec payoff = 5;
+}
+
+message GBMLocalVolModel {
+  float spot = 1;
+  float rate = 2;
+  VolSurface vol_surface = 3;
+  int32 steps = 4;
+  PayoffSpec payoff = 5;
+}
+
+message HestonModel {
+  float spot = 1;
+  float rate = 2;
+  float v0 = 3;
+  float kappa = 4;
+  float theta = 5;
+  float xi = 6;
+  float rho = 7;
+  int32 steps = 8;
+  PayoffSpec payoff = 9;
+}
+
+message VasicekModel {
+  float kappa = 1;
+  float theta = 2;
+  float sigma = 3;
+  float r0 = 4;
+  int32 steps = 5;
+}
+
+message CIRModel {
+  float kappa = 1;
+  float theta = 2;
+  float sigma = 3;
+  float r0 = 4;
+  int32 steps = 5;
+}
+
+message CIRPPModel {
+  float kappa = 1;
+  float theta = 2;
+  float sigma = 3;
+  float x0 = 4;
+  repeated float forward_tenors = 5;
+  repeated float forward_rates = 6;
+  int32 steps = 7;
+}
+
+message MultiAssetHestonModel {
+  float rate = 1;
+  repeated HestonAssetSpec assets = 2;
+  repeated float stock_correlation = 3;
+  repeated float vol_correlation = 4;
+  int32 steps = 5;
+  repeated PayoffSpec payoffs = 6;
+}
+
+message HestonAssetSpec {
+  float spot = 1;
+  float v0 = 2;
+  float kappa = 3;
+  float theta = 4;
+  float xi = 5;
+  float rho = 6;
+}
+
+// Supporting types
+
+message PayoffSpec {
+  PayoffType type = 1;
+  float strike = 2;
+  bool discounted = 3;
+}
+
+enum PayoffType {
+  PAYOFF_NONE = 0;
+  PAYOFF_CALL = 1;
+  PAYOFF_PUT = 2;
+}
+
+message VolSurface {
+  repeated float time_axis = 1;
+  repeated float spot_axis = 2;
+  repeated float values = 3;
+}
+
+enum DeviceType {
+  CPU = 0;
+  GPU = 1;
+}
+
+enum Frequency {
+  TERMINAL = 0;
+  DAILY = 1;
+  WEEKLY = 2;
+  MONTHLY = 3;
+  QUARTERLY = 4;
+  ANNUALLY = 5;
+}
+
+// Responses
+
+message FoldResponse {
+  repeated float values = 1;
+}
+
+message ScanResponse {
+  repeated float values = 1;
+  int32 steps = 2;
+  int32 num_scenarios = 3;
+}
+
+message WatchResponse {
+  repeated float finals = 1;
+  repeated ObserverData observers = 2;
+}
+
+message ObserverData {
+  string name = 1;
+  repeated float values = 2;
+  int32 num_obs = 3;
+  int32 num_paths = 4;
+}
+
+message ScanChunk {
+  repeated float values = 1;
+  int32 start_step = 2;
+  int32 step_count = 3;
+  int32 num_scenarios = 4;
+}
+
+message FoldChunk {
+  repeated float values = 1;
+  int32 start_index = 2;
+  int32 count = 3;
+}
+
+message SourceResponse {
+  string csharp_source = 1;
+}
+
+// Custom model via expression tree
+
+message CustomModel {
+  ExprNode result = 1;
+  repeated AccumDef accums = 2;
+  repeated SurfaceDef surfaces = 3;
+  int32 normal_count = 4;
+  int32 uniform_count = 5;
+  int32 steps = 6;
+}
+
+message AccumDef {
+  int32 id = 1;
+  ExprNode init = 2;
+  ExprNode body = 3;
+}
+
+message SurfaceDef {
+  int32 id = 1;
+  oneof data {
+    Curve1DData curve_1d = 2;
+    Grid2DData grid_2d = 3;
+  }
+}
+
+message Curve1DData {
+  repeated float values = 1;
+  int32 steps = 2;
+}
+
+message Grid2DData {
+  repeated float values = 1;
+  repeated float time_axis = 2;
+  repeated float spot_axis = 3;
+  int32 steps = 4;
+}
+
+message ExprNode {
+  oneof expr {
+    float const_val = 1;
+    bool time_index = 2;
+    int32 normal_id = 3;
+    int32 uniform_id = 4;
+    int32 accum_ref_id = 5;
+    int32 lookup_1d_id = 6;
+    int32 batch_ref_id = 7;
+    BinaryOp add = 10;
+    BinaryOp sub = 11;
+    BinaryOp mul = 12;
+    BinaryOp div = 13;
+    BinaryOp max = 14;
+    BinaryOp min = 15;
+    BinaryOp gt = 16;
+    BinaryOp gte = 17;
+    BinaryOp lt = 18;
+    BinaryOp lte = 19;
+    SelectOp select = 20;
+    ExprNode neg = 21;
+    ExprNode exp = 22;
+    ExprNode log = 23;
+    ExprNode sqrt = 24;
+    ExprNode abs = 25;
+    ExprNode floor = 26;
+    SurfaceAtOp surface_at = 27;
+    BinSearchOp bin_search = 28;
+  }
+}
+
+message BinaryOp {
+  ExprNode left = 1;
+  ExprNode right = 2;
+}
+
+message SelectOp {
+  ExprNode cond = 1;
+  ExprNode if_true = 2;
+  ExprNode if_false = 3;
+}
+
+message SurfaceAtOp {
+  int32 surface_id = 1;
+  ExprNode index = 2;
+}
+
+message BinSearchOp {
+  int32 surface_id = 1;
+  int32 axis_off = 2;
+  int32 axis_cnt = 3;
+  ExprNode value = 4;
+}

@@ -1,0 +1,40 @@
+[*.{fs,fsi,fsx}]
+indent_size = 4
+indent_style = space
+
+# --- Fantomas 6+ Configuration ---
+
+# Increase line length to prevent wrapping
+fsharp_max_line_length = 120
+
+# 1. Arrays and Lists
+# Controls how arrays/lists are split.
+# 'character_width' = Keep on one line if it fits.
+fsharp_multiline_block_brackets_on_same_column = false
+fsharp_experimental_keep_indent_in_branch = true
+
+# NOTE: In Fantomas 6, specific "multiline_formatter" keys like
+# 'fsharp_record_multiline_formatter' are often replaced or behave differently.
+# We focus on line length and specific spacing rules.
+
+# 2. Bindings
+# Prevent short bindings from being forced to new lines
+fsharp_multiline_bracket_style = stroustrup
+
+# 3. Parameters
+# Keep parameters on the same line if they fit
+fsharp_max_value_binding_width = 120
+fsharp_max_function_binding_width = 120
+
+# 4. Spacing preferences
+fsharp_space_before_colon = false
+fsharp_space_after_colon = true
+fsharp_space_before_semicolon = false
+fsharp_space_after_semicolon = true
+fsharp_space_before_parameter = true
+fsharp_space_around_delimiter = true
+
+# 5. Functions
+# Don't aggressively wrap function signatures
+fsharp_access_function_signature = true
+fsharp_alternative_long_member_definitions = true

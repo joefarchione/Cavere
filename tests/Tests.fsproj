@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="CompilerTests.fs" />
+    <Compile Include="PricingTests.fs" />
+    <Compile Include="RatesTests.fs" />
+    <Compile Include="NestedSimTests.fs" />
+    <Compile Include="ScheduleTests.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.6.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\Core\Core.fsproj" />
+    <ProjectReference Include="..\src\Generators\Generators.fsproj" />
+  </ItemGroup>
+
+</Project>
