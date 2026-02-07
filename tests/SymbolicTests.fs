@@ -267,7 +267,7 @@ module SymbolicTests =
         let m = {
             Result = Max(Sub(AccumRef 0, Const 100.0f), Const 0.0f)
             Accums = Map.ofList [0, { Init = Const 100.0f; Body = Mul(AccumRef 0, Exp(Const 0.01f)) }]
-            Surfaces = Map.empty; Observers = []; NormalCount = 0; UniformCount = 0; BatchSize = 0
+            Surfaces = Map.empty; Observers = []; NormalCount = 0; UniformCount = 0; BernoulliCount = 0; BatchSize = 0
         }
         Assert.False(Analysis.detectPathDependence m)
 
@@ -278,7 +278,7 @@ module SymbolicTests =
             Accums = Map.ofList [0, { Init = Const 100.0f; Body = Mul(AccumRef 0, Exp(Const 0.01f)) }]
             Surfaces = Map.empty
             Observers = [{ Name = "stock"; Expr = AccumRef 0; SlotIndex = 0 }]
-            NormalCount = 0; UniformCount = 0; BatchSize = 0
+            NormalCount = 0; UniformCount = 0; BernoulliCount = 0; BatchSize = 0
         }
         Assert.True(Analysis.detectPathDependence m)
 

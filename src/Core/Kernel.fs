@@ -19,8 +19,16 @@ module Kernel =
         if allVars.Length = 0 then m
         else
             let m1, _ = CompilerDiff.transformDual m
-            if hyperVars.Length = 0 then m1
-            else CompilerDiff.transformHyperDualSelective hyperVars m1 m
+            let expanded =
+                if hyperVars.Length = 0 then m1
+                else CompilerDiff.transformHyperDualSelective hyperVars m1 m
+            { expanded with
+                Result = Symbolic.fullySimplify expanded.Result
+                Accums = expanded.Accums |> Map.map (fun _ def ->
+                    { Init = Symbolic.fullySimplify def.Init
+                      Body = Symbolic.fullySimplify def.Body })
+                Observers = expanded.Observers |> List.map (fun obs ->
+                    { obs with Expr = Symbolic.fullySimplify obs.Expr }) }
 
     // ── Validation ───────────────────────────────────────────────────
 

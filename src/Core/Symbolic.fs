@@ -145,7 +145,7 @@ module Symbolic =
     /// Count AST nodes in an expression.
     let rec countNodes (expr: Expr) : int =
         match expr with
-        | Const _ | TimeIndex | Normal _ | Uniform _ | AccumRef _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> 1
+        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> 1
         | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> 1 + countNodes a
         | SurfaceAt(_, idx) -> 1 + countNodes idx
         | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)
@@ -170,6 +170,7 @@ module Symbolic =
         | TimeIndex -> Const 0.0f
         | Normal _ -> Const 0.0f
         | Uniform _ -> Const 0.0f
+        | Bernoulli _ -> Const 0.0f
         | Lookup1D _ -> Const 0.0f
         | BatchRef _ -> Const 0.0f
         | AccumRef _ -> Const 0.0f // AccumRef derivatives need special handling at model level
@@ -227,7 +228,7 @@ module Symbolic =
     let rec containsTimeIndex (expr: Expr) : bool =
         match expr with
         | TimeIndex -> true
-        | Const _ | Normal _ | Uniform _ | AccumRef _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> false
+        | Const _ | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> false
         | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> containsTimeIndex a
         | SurfaceAt(_, idx) -> containsTimeIndex idx
         | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)
@@ -239,7 +240,7 @@ module Symbolic =
     let rec containsLookup1D (expr: Expr) : bool =
         match expr with
         | Lookup1D _ -> true
-        | Const _ | TimeIndex | Normal _ | Uniform _ | AccumRef _ | BatchRef _ | Dual _ | HyperDual _ -> false
+        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | BatchRef _ | Dual _ | HyperDual _ -> false
         | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> containsLookup1D a
         | SurfaceAt(_, idx) -> containsLookup1D idx
         | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)
@@ -251,7 +252,7 @@ module Symbolic =
     let rec containsAccumRef (expr: Expr) (id: int) : bool =
         match expr with
         | AccumRef aid -> aid = id
-        | Const _ | TimeIndex | Normal _ | Uniform _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> false
+        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> false
         | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> containsAccumRef a id
         | SurfaceAt(_, idx) -> containsAccumRef idx id
         | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)

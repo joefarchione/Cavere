@@ -31,7 +31,7 @@ module CompilerRegular =
         line "        Index1D index,"
         line "        ArrayView1D<float, Stride1D.Dense> output,"
         line "        ArrayView1D<float, Stride1D.Dense> surfaces,"
-        line "        int steps, int normalCount, int uniformCount, int indexOffset)"
+        line "        int steps, int normalCount, int uniformCount, int bernoulliCount, int indexOffset)"
         line "    {"
         line "        int idx = (int)index;"
         line "        int seed = idx + indexOffset;"
@@ -42,6 +42,7 @@ module CompilerRegular =
         line "        {"
         CompilerCodegen.emitNormals sb model "seed"
         CompilerCodegen.emitUniforms sb model "seed"
+        CompilerCodegen.emitBernoullis sb model "seed"
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         line "        }"
         linef "        output[idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
@@ -58,7 +59,7 @@ module CompilerRegular =
         line "        ArrayView1D<float, Stride1D.Dense> output,"
         line "        ArrayView1D<float, Stride1D.Dense> surfaces,"
         line "        ArrayView1D<float, Stride1D.Dense> obsBuffer,"
-        line "        int steps, int normalCount, int uniformCount, int numSims, int numObs, int interval, int indexOffset)"
+        line "        int steps, int normalCount, int uniformCount, int bernoulliCount, int numSims, int numObs, int interval, int indexOffset)"
         line "    {"
         line "        int idx = (int)index;"
         line "        int seed = idx + indexOffset;"
@@ -69,6 +70,7 @@ module CompilerRegular =
         line "        {"
         CompilerCodegen.emitNormals sb model "seed"
         CompilerCodegen.emitUniforms sb model "seed"
+        CompilerCodegen.emitBernoullis sb model "seed"
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         CompilerCodegen.emitObserverRecording sb model layout "obsBuffer" "numSims"
         line "        }"
@@ -85,7 +87,7 @@ module CompilerRegular =
         line "        Index1D index,"
         line "        ArrayView1D<float, Stride1D.Dense> output,"
         line "        ArrayView1D<float, Stride1D.Dense> surfaces,"
-        line "        int steps, int normalCount, int uniformCount, int numSims, int indexOffset)"
+        line "        int steps, int normalCount, int uniformCount, int bernoulliCount, int numSims, int indexOffset)"
         line "    {"
         line "        int idx = (int)index;"
         line "        int seed = idx + indexOffset;"
@@ -95,6 +97,7 @@ module CompilerRegular =
         line "        {"
         CompilerCodegen.emitNormals sb model "seed"
         CompilerCodegen.emitUniforms sb model "seed"
+        CompilerCodegen.emitBernoullis sb model "seed"
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         linef "            output[t * numSims + idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
         line "        }"

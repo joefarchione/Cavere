@@ -250,6 +250,7 @@ let private buildCustom (m: CustomModel) : Model =
       Observers = []
       NormalCount = m.NormalCount
       UniformCount = m.UniformCount
+      BernoulliCount = 0
       BatchSize = 0 }
 
 // ════════════════════════════════════════════════════════════════════════════

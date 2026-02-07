@@ -89,7 +89,7 @@ module CompilerAdjoint =
         line "        ArrayView1D<float, Stride1D.Dense> surfaces,"
         line "        ArrayView1D<float, Stride1D.Dense> tape,"
         line "        ArrayView1D<float, Stride1D.Dense> adjointOut,"
-        line "        int steps, int normalCount, int uniformCount, int indexOffset)"
+        line "        int steps, int normalCount, int uniformCount, int bernoulliCount, int indexOffset)"
         line "    {"
         line "        int idx = (int)index;"
         line "        int seed = idx + indexOffset;"
@@ -114,6 +114,7 @@ module CompilerAdjoint =
 
             CompilerCodegen.emitNormals sb model "seed"
             CompilerCodegen.emitUniforms sb model "seed"
+            CompilerCodegen.emitBernoullis sb model "seed"
             CompilerCodegen.emitAccumUpdates sb layout info.SortedAccums
 
             line "        }"
@@ -138,9 +139,10 @@ module CompilerAdjoint =
             for i, (aId, _) in info.SortedAccums |> List.indexed do
                 linef "            accum_%d = tape[tapeBase + %d * steps + t];" aId i
 
-            // Recompute normals/uniforms (deterministic hash — same seed + t)
+            // Recompute normals/uniforms/bernoullis (deterministic hash — same seed + t)
             CompilerCodegen.emitNormals sb model "seed"
             CompilerCodegen.emitUniforms sb model "seed"
+            CompilerCodegen.emitBernoullis sb model "seed"
 
             line ""
 

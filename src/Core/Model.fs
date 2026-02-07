@@ -15,12 +15,14 @@ type Model = {
     Observers: ObserverSpec list
     NormalCount: int
     UniformCount: int
+    BernoulliCount: int
     BatchSize: int
 }
 
 type ModelCtx = {
     mutable NextNormalId: int
     mutable NextUniformId: int
+    mutable NextBernoulliId: int
     mutable NextAccumId: int
     mutable NextSurfaceId: int
     mutable BatchSize: int
@@ -52,13 +54,14 @@ type ModelBuilder() =
 
     member _.Run(f: ModelCtx -> Expr) : Model =
         let ctx = {
-            NextNormalId = 0; NextUniformId = 0; NextAccumId = 0; NextSurfaceId = 0
+            NextNormalId = 0; NextUniformId = 0; NextBernoulliId = 0; NextAccumId = 0; NextSurfaceId = 0
             BatchSize = 0; Accums = Map.empty; Surfaces = Map.empty; Observers = []
         }
         let result = f ctx
         { Result = result; Accums = ctx.Accums; Surfaces = ctx.Surfaces
           Observers = List.rev ctx.Observers; NormalCount = ctx.NextNormalId
-          UniformCount = ctx.NextUniformId; BatchSize = ctx.BatchSize }
+          UniformCount = ctx.NextUniformId; BernoulliCount = ctx.NextBernoulliId
+          BatchSize = ctx.BatchSize }
 
 [<AutoOpen>]
 module ModelDsl =
@@ -74,6 +77,11 @@ module ModelDsl =
         let id = ctx.NextUniformId
         ctx.NextUniformId <- id + 1
         Uniform id
+
+    let bernoulli : ModelCtx -> Expr = fun ctx ->
+        let id = ctx.NextBernoulliId
+        ctx.NextBernoulliId <- id + 1
+        Bernoulli id
 
     let evolve (init: Expr) (body: Expr -> Expr) : ModelCtx -> Expr = fun ctx ->
         let id = ctx.NextAccumId
@@ -203,10 +211,10 @@ module ModelDsl =
             v0 + (v1 - v0) * tFrac
         | Curve1D _ -> failwith "interp2d requires Grid2D surface"
 
-    let namedDual (name: string) (idx: int) (value: float32) : ModelCtx -> Expr = fun _ ->
+    let dual (name: string) (idx: int) (value: float32) : ModelCtx -> Expr = fun _ ->
         Dual(idx, value, name)
 
-    let namedHyperDual (name: string) (idx: int) (value: float32) : ModelCtx -> Expr = fun _ ->
+    let hyperDual (name: string) (idx: int) (value: float32) : ModelCtx -> Expr = fun _ ->
         HyperDual(idx, value, name)
 
     /// Cholesky decomposition of a symmetric positive-definite matrix.

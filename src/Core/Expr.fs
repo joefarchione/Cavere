@@ -5,6 +5,7 @@ type Expr =
     | TimeIndex
     | Normal of id: int
     | Uniform of id: int
+    | Bernoulli of id: int
     | AccumRef of id: int
     | Lookup1D of surfaceId: int
     | Floor of Expr
@@ -83,10 +84,8 @@ module Expr =
     let clip lo hi x = Max(lo, Min(hi, x))
     let floor e = Floor e
     let surfaceAt sid index = SurfaceAt(sid, index)
-    let dual idx value = Dual(idx, value, string idx)
-    let dualNamed name idx value = Dual(idx, value, name)
-    let hyperDual idx value = HyperDual(idx, value, string idx)
-    let hyperDualNamed name idx value = HyperDual(idx, value, name)
+    let dual name idx value = Dual(idx, value, name)
+    let hyperDual name idx value = HyperDual(idx, value, name)
 
 [<AutoOpen>]
 module ExprExtensions =

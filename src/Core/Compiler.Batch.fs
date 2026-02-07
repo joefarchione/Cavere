@@ -20,7 +20,7 @@ module CompilerBatch =
         line "        Index1D index,"
         line "        ArrayView1D<float, Stride1D.Dense> output,"
         line "        ArrayView1D<float, Stride1D.Dense> surfaces,"
-        line "        int steps, int normalCount, int uniformCount, int numSims, int indexOffset)"
+        line "        int steps, int normalCount, int uniformCount, int bernoulliCount, int numSims, int indexOffset)"
         line "    {"
         line "        int idx = (int)index;"
         line "        int batchIdx = idx / numSims;"
@@ -33,6 +33,7 @@ module CompilerBatch =
         line "        {"
         CompilerCodegen.emitNormals sb model "seed"
         CompilerCodegen.emitUniforms sb model "seed"
+        CompilerCodegen.emitBernoullis sb model "seed"
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         line "        }"
         linef "        output[idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
@@ -49,7 +50,7 @@ module CompilerBatch =
         line "        ArrayView1D<float, Stride1D.Dense> output,"
         line "        ArrayView1D<float, Stride1D.Dense> surfaces,"
         line "        ArrayView1D<float, Stride1D.Dense> obsBuffer,"
-        line "        int steps, int normalCount, int uniformCount, int numSims, int numObs, int interval, int totalThreads, int indexOffset)"
+        line "        int steps, int normalCount, int uniformCount, int bernoulliCount, int numSims, int numObs, int interval, int totalThreads, int indexOffset)"
         line "    {"
         line "        int idx = (int)index;"
         line "        int batchIdx = idx / numSims;"
@@ -62,6 +63,7 @@ module CompilerBatch =
         line "        {"
         CompilerCodegen.emitNormals sb model "seed"
         CompilerCodegen.emitUniforms sb model "seed"
+        CompilerCodegen.emitBernoullis sb model "seed"
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         CompilerCodegen.emitObserverRecording sb model layout "obsBuffer" "totalThreads"
         line "        }"

@@ -32,6 +32,7 @@ module Engine =
                steps :> obj
                kernel.Model.NormalCount :> obj
                kernel.Model.UniformCount :> obj
+               kernel.Model.BernoulliCount :> obj
                indexOffset :> obj |])
         accel.Synchronize()
         output.GetAsArray1D()
@@ -62,6 +63,7 @@ module Engine =
                steps :> obj
                kernel.Model.NormalCount :> obj
                kernel.Model.UniformCount :> obj
+               kernel.Model.BernoulliCount :> obj
                numScenarios :> obj
                numObs :> obj
                interval :> obj
@@ -89,6 +91,7 @@ module Engine =
                steps :> obj
                kernel.Model.NormalCount :> obj
                kernel.Model.UniformCount :> obj
+               kernel.Model.BernoulliCount :> obj
                numScenarios :> obj
                indexOffset :> obj |])
         accel.Synchronize()
@@ -120,6 +123,7 @@ module Engine =
                steps :> obj
                kernel.Model.NormalCount :> obj
                kernel.Model.UniformCount :> obj
+               kernel.Model.BernoulliCount :> obj
                numScenarios :> obj
                indexOffset :> obj |])
         accel.Synchronize()
@@ -153,6 +157,7 @@ module Engine =
                steps :> obj
                kernel.Model.NormalCount :> obj
                kernel.Model.UniformCount :> obj
+               kernel.Model.BernoulliCount :> obj
                numScenarios :> obj
                numObs :> obj
                interval :> obj
@@ -189,6 +194,7 @@ module Engine =
                    steps :> obj
                    kernel.Model.NormalCount :> obj
                    kernel.Model.UniformCount :> obj
+                   kernel.Model.BernoulliCount :> obj
                    indexOffset :> obj |])
             accel.Synchronize()
 
@@ -234,6 +240,7 @@ module Engine =
                    steps :> obj
                    kernel.Model.NormalCount :> obj
                    kernel.Model.UniformCount :> obj
+                   kernel.Model.BernoulliCount :> obj
                    numScenarios :> obj
                    numObs :> obj
                    interval :> obj
@@ -307,6 +314,7 @@ module Engine =
                steps :> obj
                kernel.Model.NormalCount :> obj
                kernel.Model.UniformCount :> obj
+               kernel.Model.BernoulliCount :> obj
                indexOffset :> obj |])
         accel.Synchronize()
 

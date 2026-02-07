@@ -97,6 +97,10 @@ module CompilerCodegen =
         for n in 0 .. model.UniformCount - 1 do
             sb.AppendLine(sprintf "            float u_%d = ToFloat(Hash(%s * 7919 + t * uniformCount + %d + 1000000));" n seedVar n) |> ignore
 
+    let emitBernoullis (sb: Text.StringBuilder) (model: Model) (seedVar: string) =
+        for n in 0 .. model.BernoulliCount - 1 do
+            sb.AppendLine(sprintf "            float b_%d = (ToFloat(Hash(%s * 5399 + t * bernoulliCount + %d + 2000000)) < 0.5f) ? 1.0f : 0.0f;" n seedVar n) |> ignore
+
     let emitAccumUpdates (sb: Text.StringBuilder) (layout: SurfaceLayout) (sortedAccums: (int * AccumDef) list) =
         for (id, def) in sortedAccums do
             sb.AppendLine(sprintf "            accum_%d = %s;" id (CompilerCommon.emitExpr layout def.Body)) |> ignore

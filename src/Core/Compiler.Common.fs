@@ -76,6 +76,7 @@ module CompilerCommon =
         | TimeIndex -> "t"
         | Normal id -> sprintf "z_%d" id
         | Uniform id -> sprintf "u_%d" id
+        | Bernoulli id -> sprintf "b_%d" id
         | AccumRef id -> sprintf "accum_%d" id
         | Add(a, b) -> sprintf "(%s + %s)" (emitExpr layout a) (emitExpr layout b)
         | Sub(a, b) -> sprintf "(%s - %s)" (emitExpr layout a) (emitExpr layout b)
@@ -117,7 +118,7 @@ module CompilerCommon =
 
     let rec collectAccumRefs (expr: Expr) : Set<int> =
         match expr with
-        | Const _ | TimeIndex | Normal _ | Uniform _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> Set.empty
+        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> Set.empty
         | AccumRef id -> Set.singleton id
         | Floor a -> collectAccumRefs a
         | SurfaceAt(_, idx) -> collectAccumRefs idx
@@ -135,7 +136,7 @@ module CompilerCommon =
 
     let rec collectSurfaceIds (expr: Expr) : Set<int> =
         match expr with
-        | Const _ | TimeIndex | Normal _ | Uniform _ | AccumRef _ | Dual _ | HyperDual _ -> Set.empty
+        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | Dual _ | HyperDual _ -> Set.empty
         | Lookup1D sid | BatchRef sid -> Set.singleton sid
         | SurfaceAt(sid, idx) -> collectSurfaceIds idx |> Set.add sid
         | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> collectSurfaceIds a

@@ -207,6 +207,7 @@ let ``Validate rejects dangling surface ID`` () =
         Observers = []
         NormalCount = 0
         UniformCount = 0
+        BernoulliCount = 0
         BatchSize = 0
     }
     let ex = Assert.Throws<exn>(fun () -> Compiler.build badModel |> ignore)
@@ -222,6 +223,7 @@ let ``Validate rejects dangling AccumRef`` () =
         Observers = []
         NormalCount = 0
         UniformCount = 0
+        BernoulliCount = 0
         BatchSize = 0
     }
     let ex = Assert.Throws<exn>(fun () -> Compiler.build badModel |> ignore)
@@ -238,3 +240,27 @@ let ``Validate passes for well-formed model`` () =
     }
     // Should not throw
     Compiler.build m |> ignore
+
+[<Fact>]
+let ``Bernoulli model compiles and generates b_0`` () =
+    let m = model {
+        let! b = bernoulli
+        let! x = evolve 0.0f.C (fun x -> x + b)
+        return x
+    }
+    Assert.Equal(1, m.BernoulliCount)
+    let source, _ = Compiler.buildSource m
+    Assert.Contains("float b_0", source)
+    Assert.Contains("bernoulliCount", source)
+
+[<Fact>]
+let ``Bernoulli fold produces 0 or 1 values`` () =
+    let m = model {
+        let! b = bernoulli
+        let! x = evolve 0.0f.C (fun _ -> b)
+        return x
+    }
+    use sim = Simulation.create CPU 1000 1
+    let results = Simulation.fold sim m
+    for v in results do
+        Assert.True(v = 0.0f || v = 1.0f, $"Expected 0 or 1, got {v}")

@@ -14,7 +14,7 @@ module CompilerDiff =
     let rec collectDiffVars (expr: Expr) : Set<int> =
         match expr with
         | Dual(idx, _, _) | HyperDual(idx, _, _) -> Set.singleton idx
-        | Const _ | TimeIndex | Normal _ | Uniform _ | AccumRef _ | Lookup1D _ | BatchRef _ -> Set.empty
+        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | Lookup1D _ | BatchRef _ -> Set.empty
         | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> collectDiffVars a
         | SurfaceAt(_, idx) -> collectDiffVars idx
         | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)
@@ -28,7 +28,7 @@ module CompilerDiff =
     let rec collectHyperDualVars (expr: Expr) : Set<int> =
         match expr with
         | HyperDual(idx, _, _) -> Set.singleton idx
-        | Dual _ | Const _ | TimeIndex | Normal _ | Uniform _ | AccumRef _ | Lookup1D _ | BatchRef _ -> Set.empty
+        | Dual _ | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | Lookup1D _ | BatchRef _ -> Set.empty
         | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> collectHyperDualVars a
         | SurfaceAt(_, idx) -> collectHyperDualVars idx
         | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)
@@ -42,7 +42,7 @@ module CompilerDiff =
     let rec private collectDiffVarNames (expr: Expr) : Map<int, string> =
         match expr with
         | Dual(idx, _, name) | HyperDual(idx, _, name) -> Map.ofList [idx, name]
-        | Const _ | TimeIndex | Normal _ | Uniform _ | AccumRef _ | Lookup1D _ | BatchRef _ -> Map.empty
+        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | Lookup1D _ | BatchRef _ -> Map.empty
         | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> collectDiffVarNames a
         | SurfaceAt(_, idx) -> collectDiffVarNames idx
         | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)
@@ -120,7 +120,7 @@ module CompilerDiff =
         | Dual(idx, _, _) | HyperDual(idx, _, _) -> if idx = wrt then Const 1.0f else Const 0.0f
 
         // Constants and random variables: zero derivative
-        | Const _ | TimeIndex | Normal _ | Uniform _ | Lookup1D _ | BatchRef _ -> Const 0.0f
+        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | Lookup1D _ | BatchRef _ -> Const 0.0f
         | Floor _ -> Const 0.0f
         | SurfaceAt _ -> Const 0.0f
         | BinSearch _ -> Const 0.0f
@@ -233,7 +233,7 @@ module CompilerDiff =
         let derivObservers =
             dResultExprs |> Array.mapi (fun i dExpr ->
                 let name = names |> Map.tryFind diffVars.[i] |> Option.defaultValue (string diffVars.[i])
-                { Name = $"__deriv_{name}"
+                { Name = $"d1_{name}"
                   Expr = dExpr
                   SlotIndex = nextObsSlot + i })
             |> Array.toList
@@ -291,12 +291,12 @@ module CompilerDiff =
             let layer2Observers =
                 diffVars |> Array.mapi (fun pos wrtIdx ->
                     let wrtName = names |> Map.tryFind wrtIdx |> Option.defaultValue (string wrtIdx)
-                    let derivObs = model1.Observers |> List.find (fun o -> o.Name = $"__deriv_{wrtName}")
+                    let derivObs = model1.Observers |> List.find (fun o -> o.Name = $"d1_{wrtName}")
                     let accumDerivIdFn (id: int) =
                         if id <= maxOrigId then layer1Id id pos
                         else layer2DiagId ((id - layer1Base) / n) pos
                     let d2Expr = forwardDiff derivObs.Expr wrtIdx accumDerivIdFn
-                    { Name = $"__deriv2_{wrtName}"; Expr = d2Expr; SlotIndex = nextSlot + pos })
+                    { Name = $"d2_{wrtName}"; Expr = d2Expr; SlotIndex = nextSlot + pos })
                 |> Array.toList
 
             { model1 with Accums = newAccums; Observers = model1.Observers @ layer2Observers }, diffVars
@@ -324,12 +324,12 @@ module CompilerDiff =
                            let wrtIdx = diffVars.[j]
                            let iName = names |> Map.tryFind diffVars.[i] |> Option.defaultValue (string diffVars.[i])
                            let jName = names |> Map.tryFind diffVars.[j] |> Option.defaultValue (string diffVars.[j])
-                           let derivObs = model1.Observers |> List.find (fun o -> o.Name = $"__deriv_{iName}")
+                           let derivObs = model1.Observers |> List.find (fun o -> o.Name = $"d1_{iName}")
                            let accumDerivIdFn (id: int) =
                                if id <= maxOrigId then layer1Id id j
                                else layer2FullId ((id - layer1Base) / n) i j
                            let d2Expr = forwardDiff derivObs.Expr wrtIdx accumDerivIdFn
-                           { Name = $"__deriv2_{iName}_{jName}"
+                           { Name = $"d2_{iName}_{jName}"
                              Expr = d2Expr
                              SlotIndex = nextSlot + i * n + j } |]
                 |> Array.toList
@@ -383,12 +383,12 @@ module CompilerDiff =
                    let wrtIdx = allDiffVars.[pos]
                    if hyperSet.Contains wrtIdx then
                        let wrtName = names |> Map.tryFind wrtIdx |> Option.defaultValue (string wrtIdx)
-                       let derivObs = model1.Observers |> List.find (fun o -> o.Name = $"__deriv_{wrtName}")
+                       let derivObs = model1.Observers |> List.find (fun o -> o.Name = $"d1_{wrtName}")
                        let accumDerivIdFn (id: int) =
                            if id <= maxOrigId then layer1Id id pos
                            else layer2DiagId ((id - layer1Base) / n) pos
                        let d2Expr = forwardDiff derivObs.Expr wrtIdx accumDerivIdFn
-                       let obs = { Name = $"__deriv2_{wrtName}"; Expr = d2Expr; SlotIndex = nextSlot + slotIdx }
+                       let obs = { Name = $"d2_{wrtName}"; Expr = d2Expr; SlotIndex = nextSlot + slotIdx }
                        slotIdx <- slotIdx + 1
                        yield obs |]
             |> Array.toList
@@ -404,7 +404,7 @@ module CompilerDiff =
     let rec partialDiffAccumRef (expr: Expr) (targetId: int) : Expr =
         match expr with
         | AccumRef id -> if id = targetId then Const 1.0f else Const 0.0f
-        | Dual _ | HyperDual _ | Const _ | TimeIndex | Normal _ | Uniform _ | Lookup1D _ | BatchRef _ -> Const 0.0f
+        | Dual _ | HyperDual _ | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | Lookup1D _ | BatchRef _ -> Const 0.0f
         | Floor _ | SurfaceAt _ | BinSearch _ -> Const 0.0f
         | Add(a, b) -> Add(partialDiffAccumRef a targetId, partialDiffAccumRef b targetId)
         | Sub(a, b) -> Sub(partialDiffAccumRef a targetId, partialDiffAccumRef b targetId)
@@ -430,7 +430,7 @@ module CompilerDiff =
     let rec partialDiffDiffVar (expr: Expr) (targetIdx: int) : Expr =
         match expr with
         | Dual(idx, _, _) | HyperDual(idx, _, _) -> if idx = targetIdx then Const 1.0f else Const 0.0f
-        | AccumRef _ | Const _ | TimeIndex | Normal _ | Uniform _ | Lookup1D _ | BatchRef _ -> Const 0.0f
+        | AccumRef _ | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | Lookup1D _ | BatchRef _ -> Const 0.0f
         | Floor _ | SurfaceAt _ | BinSearch _ -> Const 0.0f
         | Add(a, b) -> Add(partialDiffDiffVar a targetIdx, partialDiffDiffVar b targetIdx)
         | Sub(a, b) -> Sub(partialDiffDiffVar a targetIdx, partialDiffDiffVar b targetIdx)
