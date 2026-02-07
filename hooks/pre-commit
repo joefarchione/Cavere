@@ -1,0 +1,62 @@
+#!/bin/sh
+# Pre-commit hook: F# formatting (Fantomas) + Python linting/formatting/typechecking (ruff, ty)
+
+set -e
+
+# ══════════════════════════════════════════════════════════════════
+# F# — Fantomas formatting check
+# ══════════════════════════════════════════════════════════════════
+
+FS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.fs$' || true)
+
+if [ -n "$FS_FILES" ]; then
+    echo "[pre-commit] Checking F# formatting with Fantomas..."
+    FANTOMAS_FAILED=0
+    for f in $FS_FILES; do
+        if [ -f "$f" ]; then
+            fantomas --check "$f" 2>/dev/null || FANTOMAS_FAILED=1
+        fi
+    done
+    if [ $FANTOMAS_FAILED -ne 0 ]; then
+        echo ""
+        echo "[pre-commit] F# formatting issues found. Run: fantomas src/ tests/ examples/"
+        exit 1
+    fi
+    echo "[pre-commit] F# formatting OK"
+fi
+
+# ══════════════════════════════════════════════════════════════════
+# Python — ruff format check, ruff lint, ty typecheck
+# ══════════════════════════════════════════════════════════════════
+
+PY_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
+
+if [ -n "$PY_FILES" ]; then
+    PYROOT="caverepy"
+
+    echo "[pre-commit] Checking Python formatting with ruff..."
+    ruff format --check "$PYROOT" || {
+        echo ""
+        echo "[pre-commit] Python formatting issues found. Run: ruff format caverepy/"
+        exit 1
+    }
+    echo "[pre-commit] Python formatting OK"
+
+    echo "[pre-commit] Linting Python with ruff..."
+    ruff check "$PYROOT" || {
+        echo ""
+        echo "[pre-commit] Python lint issues found. Run: ruff check --fix caverepy/"
+        exit 1
+    }
+    echo "[pre-commit] Python lint OK"
+
+    echo "[pre-commit] Type-checking Python with ty..."
+    (cd "$PYROOT" && uv run ty check) || {
+        echo ""
+        echo "[pre-commit] Python type errors found. Fix issues in caverepy/"
+        exit 1
+    }
+    echo "[pre-commit] Python typecheck OK"
+fi
+
+echo "[pre-commit] All checks passed"
