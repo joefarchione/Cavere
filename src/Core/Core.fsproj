@@ -6,11 +6,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Expr.fs" />
-    <Compile Include="Schedule.fs" />
-    <Compile Include="Model.fs" />
-    <Compile Include="Symbolic.fs" />
-    <Compile Include="Analysis.fs" />
+    <!-- Dsl: Expression types, schedule, model builder -->
+    <Compile Include="Dsl.Expr.fs" />
+    <Compile Include="Dsl.Schedule.fs" />
+    <Compile Include="Dsl.Model.fs" />
+    <!-- Ast: Expression walkers, simplification, analysis -->
+    <Compile Include="Ast.Symbolic.fs" />
+    <Compile Include="Ast.Analysis.fs" />
+    <!-- Compiler: Code generation pipeline -->
     <Compile Include="Compiler.Common.fs" />
     <Compile Include="Compiler.Codegen.fs" />
     <Compile Include="Compiler.Regular.fs" />
@@ -18,13 +21,14 @@
     <Compile Include="Compiler.Diff.fs" />
     <Compile Include="Compiler.Adjoint.fs" />
     <Compile Include="Compiler.fs" />
-    <Compile Include="Device.fs" />
-    <Compile Include="Transfer.fs" />
-    <Compile Include="Engine.fs" />
-    <Compile Include="Watcher.fs" />
-    <Compile Include="Kernel.fs" />
-    <Compile Include="Simulation.fs" />
-    <Compile Include="Output.fs" />
+    <!-- Sim: Device management, kernel launch, simulation -->
+    <Compile Include="Sim.Device.fs" />
+    <Compile Include="Sim.Transfer.fs" />
+    <Compile Include="Sim.Engine.fs" />
+    <Compile Include="Sim.Watcher.fs" />
+    <Compile Include="Sim.Kernel.fs" />
+    <Compile Include="Sim.Simulation.fs" />
+    <Compile Include="Sim.Output.fs" />
   </ItemGroup>
 
   <ItemGroup>
