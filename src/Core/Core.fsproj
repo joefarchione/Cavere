@@ -16,18 +16,22 @@
     <Compile Include="Compiler.Regular.fs" />
     <Compile Include="Compiler.Batch.fs" />
     <Compile Include="Compiler.Diff.fs" />
+    <Compile Include="Compiler.Adjoint.fs" />
     <Compile Include="Compiler.fs" />
     <Compile Include="Device.fs" />
+    <Compile Include="Transfer.fs" />
     <Compile Include="Engine.fs" />
     <Compile Include="Watcher.fs" />
     <Compile Include="Kernel.fs" />
     <Compile Include="Simulation.fs" />
+    <Compile Include="Output.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="ILGPU" Version="1.5.3" />
     <PackageReference Include="ILGPU.Algorithms" Version="1.5.3" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
+    <PackageReference Include="Parquet.Net" Version="5.5.0" />
   </ItemGroup>
 
 </Project>

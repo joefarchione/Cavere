@@ -179,9 +179,185 @@ module CompilerDiff =
         expandedModel, diffVars
 
     // ══════════════════════════════════════════════════════════════════
+    // Model Transformation (HyperDual Mode — 2nd order)
+    // ══════════════════════════════════════════════════════════════════
+
+    /// Transform a model to compute 2nd-order derivatives via nested forward differentiation.
+    /// diagonal=true: only d²V/dSi² (gamma); diagonal=false: full d²V/dSi·dSj (cross-gamma).
+    let transformHyperDual (diagonal: bool) (model: Model) : Model * int[] =
+        let diffVars = collectModelDiffVars model
+        let n = diffVars.Length
+        if n = 0 then model, [||]
+        else
+
+        // Step 1: Apply dual transform for 1st-order derivatives
+        let model1, _ = transformDual model
+
+        let maxOrigId =
+            if model.Accums.IsEmpty then -1
+            else model.Accums |> Map.toSeq |> Seq.map fst |> Seq.max
+        let numOrig = model.Accums.Count
+        let layer1Base = maxOrigId + 1
+        let layer1Id origId pos = layer1Base + origId * n + pos
+        let sortedOrigAccums = CompilerCommon.sortAccums model.Accums
+        let layer2Base = layer1Base + numOrig * n
+
+        let mutable newAccums = model1.Accums
+
+        if diagonal then
+            let layer2DiagId origId pos = layer2Base + origId * n + pos
+
+            for pos in 0 .. n - 1 do
+                let wrtIdx = diffVars.[pos]
+                for (origId, _) in sortedOrigAccums do
+                    let l1Def = model1.Accums.[layer1Id origId pos]
+                    let accumDerivIdFn (id: int) =
+                        if id <= maxOrigId then layer1Id id pos
+                        else layer2DiagId ((id - layer1Base) / n) pos
+                    let dInit = forwardDiff l1Def.Init wrtIdx accumDerivIdFn
+                    let dBody = forwardDiff l1Def.Body wrtIdx accumDerivIdFn
+                    newAccums <- newAccums |> Map.add (layer2DiagId origId pos) { Init = dInit; Body = dBody }
+
+            let nextSlot = model1.Observers.Length
+            let layer2Observers =
+                diffVars |> Array.mapi (fun pos wrtIdx ->
+                    let derivObs = model1.Observers |> List.find (fun o -> o.Name = $"__deriv_{wrtIdx}")
+                    let accumDerivIdFn (id: int) =
+                        if id <= maxOrigId then layer1Id id pos
+                        else layer2DiagId ((id - layer1Base) / n) pos
+                    let d2Expr = forwardDiff derivObs.Expr wrtIdx accumDerivIdFn
+                    { Name = $"__deriv2_{wrtIdx}"; Expr = d2Expr; SlotIndex = nextSlot + pos })
+                |> Array.toList
+
+            { model1 with Accums = newAccums; Observers = model1.Observers @ layer2Observers }, diffVars
+
+        else
+            // Full Hessian: d²V/dSi·dSj for all i, j
+            let layer2FullId origId i j = layer2Base + origId * n * n + i * n + j
+
+            for i in 0 .. n - 1 do
+                for j in 0 .. n - 1 do
+                    let wrtIdx = diffVars.[j]
+                    for (origId, _) in sortedOrigAccums do
+                        let l1Def = model1.Accums.[layer1Id origId i]
+                        let accumDerivIdFn (id: int) =
+                            if id <= maxOrigId then layer1Id id j
+                            else layer2FullId ((id - layer1Base) / n) i j
+                        let dInit = forwardDiff l1Def.Init wrtIdx accumDerivIdFn
+                        let dBody = forwardDiff l1Def.Body wrtIdx accumDerivIdFn
+                        newAccums <- newAccums |> Map.add (layer2FullId origId i j) { Init = dInit; Body = dBody }
+
+            let nextSlot = model1.Observers.Length
+            let layer2Observers =
+                [| for i in 0 .. n - 1 do
+                       for j in 0 .. n - 1 do
+                           let wrtIdx = diffVars.[j]
+                           let derivObs = model1.Observers |> List.find (fun o -> o.Name = $"__deriv_{diffVars.[i]}")
+                           let accumDerivIdFn (id: int) =
+                               if id <= maxOrigId then layer1Id id j
+                               else layer2FullId ((id - layer1Base) / n) i j
+                           let d2Expr = forwardDiff derivObs.Expr wrtIdx accumDerivIdFn
+                           { Name = $"__deriv2_{diffVars.[i]}_{diffVars.[j]}"
+                             Expr = d2Expr
+                             SlotIndex = nextSlot + i * n + j } |]
+                |> Array.toList
+
+            { model1 with Accums = newAccums; Observers = model1.Observers @ layer2Observers }, diffVars
+
+    // ══════════════════════════════════════════════════════════════════
+    // Partial Derivatives (for Adjoint mode)
+    // ══════════════════════════════════════════════════════════════════
+
+    /// Partial derivative of expr w.r.t. AccumRef(targetId).
+    /// All other AccumRefs and DiffVars are treated as constants.
+    let rec partialDiffAccumRef (expr: Expr) (targetId: int) : Expr =
+        match expr with
+        | AccumRef id -> if id = targetId then Const 1.0f else Const 0.0f
+        | DiffVar _ | Const _ | TimeIndex | Normal _ | Uniform _ | Lookup1D _ | BatchRef _ -> Const 0.0f
+        | Floor _ | SurfaceAt _ | BinSearch _ -> Const 0.0f
+        | Add(a, b) -> Add(partialDiffAccumRef a targetId, partialDiffAccumRef b targetId)
+        | Sub(a, b) -> Sub(partialDiffAccumRef a targetId, partialDiffAccumRef b targetId)
+        | Mul(a, b) ->
+            Add(Mul(partialDiffAccumRef a targetId, b), Mul(a, partialDiffAccumRef b targetId))
+        | Div(a, b) ->
+            Div(Sub(Mul(partialDiffAccumRef a targetId, b),
+                    Mul(a, partialDiffAccumRef b targetId)), Mul(b, b))
+        | Exp a -> Mul(Exp a, partialDiffAccumRef a targetId)
+        | Log a -> Mul(Div(Const 1.0f, a), partialDiffAccumRef a targetId)
+        | Sqrt a -> Mul(Div(Const 0.5f, Sqrt a), partialDiffAccumRef a targetId)
+        | Neg a -> Neg(partialDiffAccumRef a targetId)
+        | Abs a ->
+            Mul(Select(Gt(a, Const 0.0f), Const 1.0f, Const -1.0f), partialDiffAccumRef a targetId)
+        | Max(a, b) -> Select(Gt(a, b), partialDiffAccumRef a targetId, partialDiffAccumRef b targetId)
+        | Min(a, b) -> Select(Lt(a, b), partialDiffAccumRef a targetId, partialDiffAccumRef b targetId)
+        | Gt _ | Gte _ | Lt _ | Lte _ -> Const 0.0f
+        | Select(c, t, f) ->
+            Select(c, partialDiffAccumRef t targetId, partialDiffAccumRef f targetId)
+
+    /// Partial derivative of expr w.r.t. DiffVar(targetIdx).
+    /// AccumRefs are treated as constants (no chain rule through accums).
+    let rec partialDiffDiffVar (expr: Expr) (targetIdx: int) : Expr =
+        match expr with
+        | DiffVar(idx, _) -> if idx = targetIdx then Const 1.0f else Const 0.0f
+        | AccumRef _ | Const _ | TimeIndex | Normal _ | Uniform _ | Lookup1D _ | BatchRef _ -> Const 0.0f
+        | Floor _ | SurfaceAt _ | BinSearch _ -> Const 0.0f
+        | Add(a, b) -> Add(partialDiffDiffVar a targetIdx, partialDiffDiffVar b targetIdx)
+        | Sub(a, b) -> Sub(partialDiffDiffVar a targetIdx, partialDiffDiffVar b targetIdx)
+        | Mul(a, b) ->
+            Add(Mul(partialDiffDiffVar a targetIdx, b), Mul(a, partialDiffDiffVar b targetIdx))
+        | Div(a, b) ->
+            Div(Sub(Mul(partialDiffDiffVar a targetIdx, b),
+                    Mul(a, partialDiffDiffVar b targetIdx)), Mul(b, b))
+        | Exp a -> Mul(Exp a, partialDiffDiffVar a targetIdx)
+        | Log a -> Mul(Div(Const 1.0f, a), partialDiffDiffVar a targetIdx)
+        | Sqrt a -> Mul(Div(Const 0.5f, Sqrt a), partialDiffDiffVar a targetIdx)
+        | Neg a -> Neg(partialDiffDiffVar a targetIdx)
+        | Abs a ->
+            Mul(Select(Gt(a, Const 0.0f), Const 1.0f, Const -1.0f), partialDiffDiffVar a targetIdx)
+        | Max(a, b) -> Select(Gt(a, b), partialDiffDiffVar a targetIdx, partialDiffDiffVar b targetIdx)
+        | Min(a, b) -> Select(Lt(a, b), partialDiffDiffVar a targetIdx, partialDiffDiffVar b targetIdx)
+        | Gt _ | Gte _ | Lt _ | Lte _ -> Const 0.0f
+        | Select(c, t, f) ->
+            Select(c, partialDiffDiffVar t targetIdx, partialDiffDiffVar f targetIdx)
+
+    // ══════════════════════════════════════════════════════════════════
     // Convenience: Check if model uses AD
     // ══════════════════════════════════════════════════════════════════
 
     /// Check if a model contains any DiffVar nodes.
     let hasDiffVars (model: Model) : bool =
         (collectModelDiffVars model).Length > 0
+
+    // ══════════════════════════════════════════════════════════════════
+    // AD Method Recommendation
+    // ══════════════════════════════════════════════════════════════════
+
+    /// Recommend differentiation method based on model characteristics.
+    /// Returns (recommended mode, explanation string).
+    let recommend (model: Model) : DiffMode option * string =
+        let diffVars = collectModelDiffVars model
+        let n = diffVars.Length
+        let numAccums = model.Accums.Count
+
+        if n = 0 then
+            None,
+            "No DiffVar nodes found. Options:\n" +
+            "  - Add DiffVar(index, value) to mark differentiable parameters\n" +
+            "  - Use finite differences (bump-and-revalue) as a fallback"
+        elif n <= 4 then
+            Some Dual,
+            $"{n} DiffVar(s): Dual (forward mode) recommended.\n" +
+            $"  Adds {numAccums * n} derivative accumulators ({numAccums} per DiffVar).\n" +
+            "  All derivatives computed in a single forward pass.\n" +
+            "  For 2nd-order (gamma): use HyperDual(diagonal=true)."
+        elif n <= 10 then
+            Some Adjoint,
+            $"{n} DiffVars: Adjoint (reverse mode) recommended.\n" +
+            $"  Forward mode would add {numAccums * n} accumulators — may hit register pressure.\n" +
+            $"  Adjoint uses tape memory: {numAccums} * steps * numScenarios floats.\n" +
+            "  Computes all derivatives in one forward + backward pass."
+        else
+            Some Adjoint,
+            $"{n} DiffVars: Adjoint (reverse mode) strongly recommended.\n" +
+            $"  Forward mode would need {numAccums * (1 + n)} total accumulators — too many registers.\n" +
+            $"  Adjoint tape: {numAccums} * steps * numScenarios floats."

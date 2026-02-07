@@ -13,6 +13,7 @@
     <Compile Include="ScheduleTests.fs" />
     <Compile Include="SymbolicTests.fs" />
     <Compile Include="DiffTests.fs" />
+    <Compile Include="MemoryTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

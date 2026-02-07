@@ -22,6 +22,13 @@ let mapFrequency (f: Cavere.Grpc.Frequency) : Cavere.Core.Frequency =
     | Cavere.Grpc.Frequency.Annually -> Cavere.Core.Frequency.Annually
     | _ -> Cavere.Core.Frequency.Terminal
 
+let mapDiffMode (d: Cavere.Grpc.DiffMode) : Cavere.Core.DiffMode =
+    match d with
+    | Cavere.Grpc.DiffMode.DiffHyperdualDiag -> Cavere.Core.DiffMode.HyperDual true
+    | Cavere.Grpc.DiffMode.DiffHyperdualFull -> Cavere.Core.DiffMode.HyperDual false
+    | Cavere.Grpc.DiffMode.DiffAdjoint -> Cavere.Core.DiffMode.Adjoint
+    | _ -> Cavere.Core.DiffMode.Dual
+
 // ════════════════════════════════════════════════════════════════════════════
 // Helpers
 // ════════════════════════════════════════════════════════════════════════════
@@ -213,6 +220,8 @@ let rec exprFromProto (node: ExprNode) : Expr =
     | ExprNode.ExprOneofCase.BinSearch ->
         let bs = node.BinSearch
         BinSearch(bs.SurfaceId, bs.AxisOff, bs.AxisCnt, exprFromProto bs.Value)
+    | ExprNode.ExprOneofCase.DiffVar ->
+        DiffVar(node.DiffVar.Index, node.DiffVar.Value)
     | _ -> failwith $"Unknown ExprNode case: {node.ExprCase}"
 
 let private buildCustom (m: CustomModel) : Model =

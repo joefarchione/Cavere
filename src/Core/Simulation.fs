@@ -19,10 +19,26 @@ type Simulation(deviceType: DeviceType, numScenarios: int, steps: int) =
             accel.Dispose()
             ctx.Dispose()
 
+/// Multi-device simulation — splits work across multiple accelerators.
+type MultiDeviceSimulation(config: MultiDeviceConfig, numScenarios: int, steps: int) =
+    let deviceSet = Device.createMulti config
+
+    member _.Config = config
+    member _.NumScenarios = numScenarios
+    member _.Steps = steps
+    member _.DeviceSet = deviceSet
+
+    interface IDisposable with
+        member _.Dispose() =
+            Device.disposeMulti deviceSet
+
 module Simulation =
 
     let create (deviceType: DeviceType) (numScenarios: int) (steps: int) : Simulation =
         new Simulation(deviceType, numScenarios, steps)
+
+    let createMulti (config: MultiDeviceConfig) (numScenarios: int) (steps: int) : MultiDeviceSimulation =
+        new MultiDeviceSimulation(config, numScenarios, steps)
 
     // ── Source export (delegates to Kernel) ───────────────────────────
 
@@ -35,16 +51,16 @@ module Simulation =
     // ── Kernel execution ─────────────────────────────────────────────
 
     let foldKernel (sim: Simulation) (kernel: CompiledKernel) : float32[] =
-        Engine.fold sim.Accelerator kernel sim.NumScenarios sim.Steps
+        Engine.fold sim.Accelerator kernel sim.NumScenarios sim.Steps 0
 
     let foldWatchKernel (sim: Simulation) (kernel: CompiledKernel) (freq: Frequency) : float32[] * WatchResult =
         let interval = Watcher.intervalOf freq sim.Steps
-        let finals, obsBuf = Engine.foldWatch sim.Accelerator kernel sim.NumScenarios sim.Steps interval
+        let finals, obsBuf = Engine.foldWatch sim.Accelerator kernel sim.NumScenarios sim.Steps interval 0
         let numObs = Watcher.numObs interval sim.Steps
         finals, { Buffer = obsBuf; Observers = kernel.Model.Observers; NumObs = numObs; NumPaths = sim.NumScenarios }
 
     let scanKernel (sim: Simulation) (kernel: CompiledKernel) : float32[,] =
-        Engine.scan sim.Accelerator kernel sim.NumScenarios sim.Steps
+        Engine.scan sim.Accelerator kernel sim.NumScenarios sim.Steps 0
 
     // ── Convenience (compile + run) ──────────────────────────────────
 
@@ -56,6 +72,26 @@ module Simulation =
 
     let scan (sim: Simulation) (m: Model) : float32[,] =
         scanKernel sim (Kernel.compile m)
+
+    // ── Multi-device execution ───────────────────────────────────────
+
+    let foldMulti (sim: MultiDeviceSimulation) (m: Model) : float32[] =
+        let kernel = Kernel.compile m
+        Engine.foldMulti sim.DeviceSet kernel sim.NumScenarios sim.Steps
+
+    // ── Adjoint execution ───────────────────────────────────────────
+
+    /// Compute value + per-scenario adjoints for all DiffVars via reverse mode.
+    /// Returns (values: float32[], adjoints: float32[numScenarios, numDiffVars]).
+    let foldAdjoint (sim: Simulation) (m: Model) : float32[] * float32[,] =
+        let kernel, info = CompilerAdjoint.build m
+        Engine.foldAdjoint sim.Accelerator kernel info sim.NumScenarios sim.Steps 0
+
+    // ── Pinned memory execution ──────────────────────────────────────
+
+    let foldPinned (sim: Simulation) (pool: PinnedPool) (m: Model) : float32[] =
+        let kernel = Kernel.compile m
+        Engine.foldPinned sim.Accelerator pool kernel sim.NumScenarios sim.Steps 0
 
 // ════════════════════════════════════════════════════════════════════════════
 // Batch Simulation — for models using batchInput
@@ -94,12 +130,12 @@ module BatchSimulation =
     // ── Kernel execution ─────────────────────────────────────────────
 
     let foldKernel (sim: BatchSimulation) (kernel: CompiledKernel) : float32[] =
-        Engine.foldBatch sim.Accelerator kernel sim.NumBatch sim.NumScenarios sim.Steps
+        Engine.foldBatch sim.Accelerator kernel sim.NumBatch sim.NumScenarios sim.Steps 0
 
     let foldWatchKernel (sim: BatchSimulation) (kernel: CompiledKernel) (freq: Frequency) : float32[] * WatchResult =
         let interval = Watcher.intervalOf freq sim.Steps
         let finals, obsBuf =
-            Engine.foldBatchWatch sim.Accelerator kernel sim.NumBatch sim.NumScenarios sim.Steps interval
+            Engine.foldBatchWatch sim.Accelerator kernel sim.NumBatch sim.NumScenarios sim.Steps interval 0
         let numObs = Watcher.numObs interval sim.Steps
         finals, { Buffer = obsBuf; Observers = kernel.Model.Observers; NumObs = numObs; NumPaths = sim.TotalThreads }
 

@@ -24,3 +24,7 @@ module Compiler =
     let generateBatchSource = CompilerBatch.generateSource
     let buildBatch = CompilerBatch.build
     let buildBatchSource = CompilerBatch.buildSource
+
+    // ── Adjoint compilation ──
+    let buildAdjoint = CompilerAdjoint.build
+    let buildAdjointSource = CompilerAdjoint.buildSource

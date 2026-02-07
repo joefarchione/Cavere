@@ -452,6 +452,283 @@ let ``AD derivative via FoldWatch produces delta estimate`` () =
 
 [<Fact>]
 let ``DiffMode type has expected cases`` () =
-    // Just ensure the type compiles with all cases
     let modes = [ Dual; HyperDual true; HyperDual false; Jet 3; Adjoint ]
     Assert.Equal(5, modes.Length)
+
+// ══════════════════════════════════════════════════════════════════
+// transformHyperDual — 2nd order
+// ══════════════════════════════════════════════════════════════════
+
+[<Fact>]
+let ``transformHyperDual returns unchanged model when no DiffVars`` () =
+    let m = model {
+        let dt = (1.0f / 252.0f).C
+        let! z = normal
+        let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
+        return stock
+    }
+    let expanded, diffVars = CompilerDiff.transformHyperDual true m
+    Assert.Empty(diffVars)
+    Assert.Equal(m.Accums.Count, expanded.Accums.Count)
+
+[<Fact>]
+let ``transformHyperDual diagonal adds 2nd-order accumulators`` () =
+    let m = {
+        Result = AccumRef 0
+        Accums = Map.ofList [
+            0, { Init = DiffVar(0, 100.0f); Body = AccumRef 0 * Exp(DiffVar(1, 0.05f)) }
+        ]
+        Surfaces = Map.empty
+        Observers = []
+        NormalCount = 0; UniformCount = 0; BatchSize = 0
+    }
+    let expanded, diffVars = CompilerDiff.transformHyperDual true m
+    Assert.Equal(2, diffVars.Length)
+    // 1 original + 2 layer-1 + 2 layer-2 (diagonal) = 5
+    Assert.Equal(5, expanded.Accums.Count)
+    // Should have 1st-order + 2nd-order observers
+    Assert.True(expanded.Observers |> List.exists (fun o -> o.Name = "__deriv_0"))
+    Assert.True(expanded.Observers |> List.exists (fun o -> o.Name = "__deriv2_0"))
+
+[<Fact>]
+let ``transformHyperDual full adds cross-term accumulators`` () =
+    let m = {
+        Result = AccumRef 0
+        Accums = Map.ofList [
+            0, { Init = DiffVar(0, 100.0f); Body = AccumRef 0 * Exp(DiffVar(1, 0.05f)) }
+        ]
+        Surfaces = Map.empty
+        Observers = []
+        NormalCount = 0; UniformCount = 0; BatchSize = 0
+    }
+    let expanded, diffVars = CompilerDiff.transformHyperDual false m
+    Assert.Equal(2, diffVars.Length)
+    // 1 original + 2 layer-1 + 4 layer-2 (2x2 full) = 7
+    Assert.Equal(7, expanded.Accums.Count)
+    // Cross-term observers
+    Assert.True(expanded.Observers |> List.exists (fun o -> o.Name = "__deriv2_0_1"))
+    Assert.True(expanded.Observers |> List.exists (fun o -> o.Name = "__deriv2_1_0"))
+
+[<Fact>]
+let ``transformHyperDual diagonal compiles and runs`` () =
+    let m = {
+        Result = AccumRef 0
+        Accums = Map.ofList [
+            0, { Init = DiffVar(0, 100.0f); Body = AccumRef 0 * 1.001f.C }
+        ]
+        Surfaces = Map.empty
+        Observers = []
+        NormalCount = 0; UniformCount = 0; BatchSize = 0
+    }
+    let expanded, _ = CompilerDiff.transformHyperDual true m
+    use sim = Simulation.create CPU 100 10
+    let results = Simulation.fold sim expanded
+    Assert.True(results |> Array.forall System.Single.IsFinite)
+
+[<Fact>]
+let ``transformHyperDual gamma for linear model is zero`` () =
+    // accum = DiffVar(0) * 1.001^t → d/dS = 1.001^t, d²/dS² = 0
+    let m = {
+        Result = AccumRef 0
+        Accums = Map.ofList [
+            0, { Init = DiffVar(0, 100.0f); Body = AccumRef 0 * 1.001f.C }
+        ]
+        Surfaces = Map.empty
+        Observers = []
+        NormalCount = 0; UniformCount = 0; BatchSize = 0
+    }
+    let expanded, _ = CompilerDiff.transformHyperDual true m
+    use sim = Simulation.create CPU 100 10
+    let _, watch = Simulation.foldWatch sim expanded Monthly
+    // The 2nd-order derivative observer should be ~0 (linear model)
+    let d2Obs = expanded.Observers |> List.find (fun o -> o.Name = "__deriv2_0")
+    let vals = Watcher.values d2Obs.Name watch
+    let mean2 = vals |> Seq.cast<float32> |> Seq.averageBy abs
+    Assert.InRange(mean2, 0.0f, 0.01f)
+
+// ══════════════════════════════════════════════════════════════════
+// Partial Derivatives
+// ══════════════════════════════════════════════════════════════════
+
+[<Fact>]
+let ``partialDiffAccumRef of AccumRef(target) is 1`` () =
+    let pd = CompilerDiff.partialDiffAccumRef (AccumRef 0) 0
+    Assert.Equal(Const 1.0f, pd)
+
+[<Fact>]
+let ``partialDiffAccumRef of AccumRef(other) is 0`` () =
+    let pd = CompilerDiff.partialDiffAccumRef (AccumRef 0) 1
+    Assert.Equal(Const 0.0f, pd)
+
+[<Fact>]
+let ``partialDiffAccumRef of product applies product rule`` () =
+    // d(AccumRef(0) * G) / d(AccumRef(0)) where G = DiffVar(1, 0.05)
+    let pd = CompilerDiff.partialDiffAccumRef (Mul(AccumRef 0, DiffVar(1, 0.05f))) 0
+    // = 1 * DiffVar(1, 0.05) + AccumRef(0) * 0
+    Assert.Equal(Add(Mul(Const 1.0f, DiffVar(1, 0.05f)), Mul(AccumRef 0, Const 0.0f)), pd)
+
+[<Fact>]
+let ``partialDiffDiffVar of DiffVar(target) is 1`` () =
+    let pd = CompilerDiff.partialDiffDiffVar (DiffVar(0, 5.0f)) 0
+    Assert.Equal(Const 1.0f, pd)
+
+[<Fact>]
+let ``partialDiffDiffVar of AccumRef is 0`` () =
+    let pd = CompilerDiff.partialDiffDiffVar (AccumRef 0) 0
+    Assert.Equal(Const 0.0f, pd)
+
+// ══════════════════════════════════════════════════════════════════
+// Adjoint Mode
+// ══════════════════════════════════════════════════════════════════
+
+[<Fact>]
+let ``computeAdjointInfo produces correct structure`` () =
+    let m = {
+        Result = AccumRef 0
+        Accums = Map.ofList [
+            0, { Init = DiffVar(0, 100.0f); Body = AccumRef 0 * Exp(DiffVar(1, 0.001f)) }
+        ]
+        Surfaces = Map.empty
+        Observers = []
+        NormalCount = 0; UniformCount = 0; BatchSize = 0
+    }
+    let info = CompilerAdjoint.computeAdjointInfo m
+    Assert.Equal(2, info.DiffVars.Length)
+    Assert.Equal(1, info.SortedAccums.Length)
+    // ∂body/∂AccumRef(0) should not be Const 0
+    Assert.NotEqual(Const 0.0f, info.BodyPartialsAccum.[(0, 0)])
+    // ∂body/∂DiffVar(1) should not be Const 0
+    Assert.NotEqual(Const 0.0f, info.BodyPartialsDiffVar.[(0, 1)])
+
+[<Fact>]
+let ``adjoint kernel source compiles`` () =
+    let m = {
+        Result = AccumRef 0
+        Accums = Map.ofList [
+            0, { Init = DiffVar(0, 100.0f); Body = AccumRef 0 * Exp(DiffVar(1, 0.001f)) }
+        ]
+        Surfaces = Map.empty
+        Observers = []
+        NormalCount = 0; UniformCount = 0; BatchSize = 0
+    }
+    let source, _, _ = CompilerAdjoint.buildSource m
+    Assert.Contains("FoldAdjoint", source)
+    Assert.Contains("adj_dv_0", source)
+    Assert.Contains("adj_dv_1", source)
+    Assert.Contains("tape[", source)
+    // Should compile through Roslyn
+    let asm = CompilerRegular.compile source
+    Assert.NotNull(asm)
+
+[<Fact>]
+let ``adjoint mode runs on CPU and produces finite results`` () =
+    let m = {
+        Result = AccumRef 0
+        Accums = Map.ofList [
+            0, { Init = DiffVar(0, 100.0f); Body = AccumRef 0 * 1.001f.C }
+        ]
+        Surfaces = Map.empty
+        Observers = []
+        NormalCount = 0; UniformCount = 0; BatchSize = 0
+    }
+    use sim = Simulation.create CPU 100 10
+    let values, adjoints = Simulation.foldAdjoint sim m
+    Assert.Equal(100, values.Length)
+    Assert.Equal(100, Array2D.length1 adjoints)
+    Assert.Equal(1, Array2D.length2 adjoints)
+    Assert.True(values |> Array.forall System.Single.IsFinite)
+    Assert.True(adjoints |> Seq.cast<float32> |> Seq.forall System.Single.IsFinite)
+
+[<Fact>]
+let ``adjoint delta matches forward-mode delta`` () =
+    // Model: accum = S0 * 1.001^t, d/dS0 = 1.001^t
+    let m = {
+        Result = AccumRef 0
+        Accums = Map.ofList [
+            0, { Init = DiffVar(0, 100.0f); Body = AccumRef 0 * 1.001f.C }
+        ]
+        Surfaces = Map.empty
+        Observers = []
+        NormalCount = 0; UniformCount = 0; BatchSize = 0
+    }
+    use sim = Simulation.create CPU 100 10
+
+    // Adjoint delta
+    let _, adjoints = Simulation.foldAdjoint sim m
+    let adjointDelta = adjoints.[0, 0]
+
+    // Forward-mode delta via transformDual
+    let expanded, _ = CompilerDiff.transformDual m
+    let _, watch = Simulation.foldWatch sim expanded Monthly
+    let derivObs = expanded.Observers |> List.find (fun o -> o.Name = "__deriv_0")
+    let derivVals = Watcher.values derivObs.Name watch
+    // The last observation should have the derivative
+    let fwdDelta = derivVals.[Array2D.length1 derivVals - 1, 0]
+
+    // Both should be ~1.001^10 ≈ 1.01005
+    Assert.InRange(adjointDelta, 1.0f, 1.05f)
+    Assert.InRange(abs (adjointDelta - fwdDelta), 0.0f, 0.01f)
+
+[<Fact>]
+let ``adjoint with stochastic model produces delta`` () =
+    let m = {
+        Result = AccumRef 0
+        Accums = Map.ofList [
+            0, { Init = DiffVar(0, 100.0f)
+                 Body = AccumRef 0 * Exp(DiffVar(1, 0.05f) / 252.0f.C
+                                         + DiffVar(2, 0.2f) * Sqrt(1.0f.C / 252.0f.C) * Normal 0) }
+        ]
+        Surfaces = Map.empty
+        Observers = []
+        NormalCount = 1; UniformCount = 0; BatchSize = 0
+    }
+    use sim = Simulation.create CPU 1_000 252
+    let values, adjoints = Simulation.foldAdjoint sim m
+    // All should be finite
+    Assert.True(values |> Array.forall System.Single.IsFinite)
+    Assert.True(adjoints |> Seq.cast<float32> |> Seq.forall System.Single.IsFinite)
+    // Delta (d/dS0) should be positive (stock is monotonically increasing in S0)
+    let meanDelta = Array.init 1000 (fun i -> adjoints.[i, 0]) |> Array.average
+    Assert.True(meanDelta > 0.0f)
+
+// ══════════════════════════════════════════════════════════════════
+// Recommend
+// ══════════════════════════════════════════════════════════════════
+
+[<Fact>]
+let ``recommend returns None for model without DiffVars`` () =
+    let m = model {
+        let! z = normal
+        let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C (1.0f / 252.0f).C
+        return stock
+    }
+    let mode, _ = CompilerDiff.recommend m
+    Assert.True(mode.IsNone)
+
+[<Fact>]
+let ``recommend returns Dual for few DiffVars`` () =
+    let m = {
+        Result = AccumRef 0
+        Accums = Map.ofList [
+            0, { Init = DiffVar(0, 100.0f); Body = AccumRef 0 * Exp(DiffVar(1, 0.05f)) }
+        ]
+        Surfaces = Map.empty; Observers = []; NormalCount = 0; UniformCount = 0; BatchSize = 0
+    }
+    let mode, desc = CompilerDiff.recommend m
+    Assert.Equal(Some Dual, mode)
+    Assert.Contains("Dual", desc)
+
+[<Fact>]
+let ``recommend returns Adjoint for many DiffVars`` () =
+    // 6 DiffVars → should recommend Adjoint
+    let m = {
+        Result = DiffVar(0, 1.0f) + DiffVar(1, 2.0f) + DiffVar(2, 3.0f)
+                 + DiffVar(3, 4.0f) + DiffVar(4, 5.0f) + DiffVar(5, 6.0f)
+        Accums = Map.ofList [
+            0, { Init = Const 1.0f; Body = AccumRef 0 }
+        ]
+        Surfaces = Map.empty; Observers = []; NormalCount = 0; UniformCount = 0; BatchSize = 0
+    }
+    let mode, desc = CompilerDiff.recommend m
+    Assert.Equal(Some Adjoint, mode)
+    Assert.Contains("Adjoint", desc)

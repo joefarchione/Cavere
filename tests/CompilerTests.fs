@@ -133,7 +133,7 @@ let ``FoldBatch source contains batchIdx and surfaces lookup`` () =
     Assert.Contains("int batchIdx = idx / numSims;", source)
 
 [<Fact>]
-let ``FoldBatch source uses scenarioIdx in seed`` () =
+let ``FoldBatch source uses seed derived from scenarioIdx + indexOffset`` () =
     let m = model {
         let! p = batchInput [| 1.0f; 2.0f |]
         let! z = normal
@@ -141,7 +141,8 @@ let ``FoldBatch source uses scenarioIdx in seed`` () =
         return x
     }
     let source, _ = Compiler.buildBatchSource m
-    Assert.Contains("scenarioIdx * 6364136", source)
+    Assert.Contains("int seed = scenarioIdx + indexOffset;", source)
+    Assert.Contains("seed * 6364136", source)
     Assert.DoesNotContain("public static void Fold(", source)
 
 [<Fact>]

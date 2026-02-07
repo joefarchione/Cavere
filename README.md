@@ -615,7 +615,7 @@ dotnet run --project examples/Examples.fsproj -- fia       # just FIA
 
 ```bash
 dotnet build                                    # Build entire solution
-dotnet test                                     # Run all tests (42 tests)
+dotnet test                                     # Run all tests (152 tests)
 dotnet run --project src/App/App.fsproj         # Run console demo
 ```
 
@@ -770,14 +770,25 @@ printQuality quality
 ```
 Cavere.sln
 ├── src/Core/                  Core DSL, compiler, engine
-│   ├── Expr.fs                Expression discriminated union
+│   ├── Expr.fs                Expression discriminated union (DiffVar for AD)
 │   ├── Schedule.fs            Time step schedules
 │   ├── Model.fs               Model record and builder CE
-│   ├── Compiler.fs            Code generation and Roslyn compilation
-│   ├── Device.fs              ILGPU context management
-│   ├── Engine.fs              Kernel launch and result extraction
+│   ├── Symbolic.fs            Expression simplification and symbolic differentiation
+│   ├── Analysis.fs            Closed-form detection and analytical evaluation
+│   ├── Compiler.Common.fs     Surface layout, expression emission, topo sort
+│   ├── Compiler.Codegen.fs    C# templates, dynamic emitters
+│   ├── Compiler.Regular.fs    Fold, FoldWatch, Scan kernels
+│   ├── Compiler.Batch.fs      FoldBatch, FoldBatchWatch kernels
+│   ├── Compiler.Diff.fs       Forward-mode AD via expression transformation
+│   ├── Compiler.Adjoint.fs    Reverse-mode AD kernel (tape + backward pass)
+│   ├── Compiler.fs            Unified compiler API facade
+│   ├── Device.fs              ILGPU context management, multi-device support
+│   ├── Transfer.fs            Pinned memory pool and async GPU transfers
+│   ├── Engine.fs              Kernel launch, result extraction, pinned + multi-device
 │   ├── Watcher.fs             Observation buffer management
-│   └── Simulation.fs          High-level orchestration API
+│   ├── Kernel.fs              Kernel compilation and caching
+│   ├── Simulation.fs          High-level orchestration API
+│   └── Output.fs              CSV and Parquet export
 ├── src/Generators/            Finance-specific generators
 │   ├── Common.fs              Discount factor (decay)
 │   ├── Equity.fs              GBM, local vol, Heston
@@ -819,6 +830,277 @@ Cavere.sln
 - **Memory**: Each simulation thread uses registers for accumulators. Surfaces are shared across threads. Observer buffers scale with `numObs * numSims * numObservers`.
 - **Compilation**: First run incurs Roslyn compilation overhead (~100-500ms). Subsequent runs reuse the compiled kernel.
 - **Batch efficiency**: Batch simulation is more efficient than sequential kernel launches — one launch for N parameter sets vs N launches.
+
+---
+
+## Automatic differentiation
+
+Cavere supports automatic differentiation for computing sensitivities (Greeks) alongside simulation values. Mark parameters as differentiable with `DiffVar`, then choose from three AD modes based on your needs.
+
+### DiffVar — differentiable parameters
+
+Replace `Const` with `DiffVar(index, value)` for any parameter you want derivatives with respect to:
+
+```fsharp
+let deltaModel = model {
+    let dt = (1.0f / 252.0f).C
+    let! z = normal
+    // Mark spot (index 0) and vol (index 1) as differentiable
+    let! stock = gbm z 0.05f.C (DiffVar(1, 0.20f)) (DiffVar(0, 100.0f)) dt
+    let! df = decay 0.05f.C dt
+    return Expr.max (stock - 100.0f) 0.0f.C * df
+}
+```
+
+### Dual mode — first-order forward
+
+Computes value + all first-order derivatives in a single forward pass. Best for 1-4 DiffVars.
+
+```fsharp
+let expanded, diffVars = CompilerDiff.transformDual deltaModel
+
+use sim = Simulation.create CPU 100_000 252
+let finals, watch = Simulation.foldWatch sim expanded Monthly
+let deltas = Watcher.terminals "__deriv_0" watch  // dV/dSpot
+let vegas = Watcher.terminals "__deriv_1" watch   // dV/dVol
+printfn "Delta: %.4f  Vega: %.4f" (Array.average deltas) (Array.average vegas)
+```
+
+### HyperDual mode — second-order (gamma)
+
+Computes value + first-order + second-order derivatives. Supports diagonal mode (d²V/dSi² only, for gamma) and full mode (all cross-terms d²V/dSi·dSj, for vanna/volga).
+
+```fsharp
+// Diagonal: only d²V/dSi² (gamma, volga)
+let expanded, _ = CompilerDiff.transformHyperDual true deltaModel
+
+use sim = Simulation.create CPU 100_000 252
+let finals, watch = Simulation.foldWatch sim expanded Monthly
+let deltas = Watcher.terminals "__deriv_0" watch    // dV/dSpot (delta)
+let gammas = Watcher.terminals "__deriv2_0" watch   // d²V/dSpot² (gamma)
+
+// Full: all cross-terms including d²V/dSpot·dVol (vanna)
+let expandedFull, _ = CompilerDiff.transformHyperDual false deltaModel
+// Observers: __deriv2_0_0 (gamma), __deriv2_0_1 (vanna), __deriv2_1_1 (volga)
+```
+
+### Adjoint mode — reverse-mode for many parameters
+
+Computes value + all first-order derivatives via forward tape + backward adjoint propagation. Best when numDiffVars > 4 (e.g. calibration). Uses extra GPU memory for the tape (numAccums × steps × numScenarios floats).
+
+```fsharp
+// Model with many differentiable parameters
+let calibrationModel = model {
+    let dt = (1.0f / 252.0f).C
+    let! z = normal
+    let! stock = gbm z (DiffVar(0, 0.05f)) (DiffVar(1, 0.20f)) (DiffVar(2, 100.0f)) dt
+    let! df = decay (DiffVar(3, 0.05f)) dt
+    return Expr.max (stock - (DiffVar(4, 100.0f))) 0.0f.C * df
+}
+
+use sim = Simulation.create CPU 100_000 252
+let values, adjoints = Simulation.foldAdjoint sim calibrationModel
+// values: float32[numScenarios] — option prices
+// adjoints: float32[numScenarios, numDiffVars] — all sensitivities per path
+let meanDelta = Array.init sim.NumScenarios (fun i -> adjoints.[i, 2]) |> Array.average
+```
+
+### Choosing an AD method
+
+`CompilerDiff.recommend` analyzes a model and suggests the best approach:
+
+```fsharp
+let mode, description = CompilerDiff.recommend myModel
+printfn "%s" description
+// "2 DiffVar(s): Dual (forward mode) recommended.
+//   Adds 2 derivative accumulators (1 per DiffVar).
+//   All derivatives computed in a single forward pass.
+//   For 2nd-order (gamma): use HyperDual(diagonal=true)."
+```
+
+### DiffMode types
+
+```fsharp
+type DiffMode =
+    | Dual                         // 1st-order forward (fastest for few DiffVars)
+    | HyperDual of diagonal: bool  // 2nd-order forward (gamma, vanna, volga)
+    | Jet of order: int            // Higher-order Taylor (reserved for future use)
+    | Adjoint                      // Reverse mode (best for many DiffVars)
+```
+
+### Comparison
+
+| Method | Order | Cost | Memory | Best for |
+|--------|-------|------|--------|----------|
+| Dual (forward) | 1st | 1 pass, N×accums extra | Registers only | 1-4 DiffVars |
+| HyperDual | 2nd | 1 pass, N²×accums extra | Registers only | Gamma, convexity |
+| Adjoint (reverse) | 1st | 2 passes (fwd+bwd) | Tape buffer | 5+ DiffVars |
+| Finite differences | Any | 2N+1 passes | None | Validation, quick checks |
+| Symbolic (`Symbolic.diff`) | Any | Pre-computation | None | Closed-form only |
+
+---
+
+## Symbolic analysis
+
+The symbolic engine provides algebraic simplification, symbolic differentiation, and closed-form pattern detection — all operating on the `Expr` AST before compilation.
+
+### Expression simplification
+
+```fsharp
+open Cavere.Core
+
+let expr = Mul(Const 2.0f, Add(Const 0.0f, Mul(Const 1.0f, x)))
+let simplified = Symbolic.fullySimplify expr
+// Result: Mul(Const 2.0f, x)  — identity and zero rules applied until fixed point
+
+let nodes_before = Symbolic.countNodes expr    // 5
+let nodes_after = Symbolic.countNodes simplified // 3
+```
+
+`Symbolic.simplify` applies one pass of algebraic rules (identity elimination, constant folding, double negation, exp/log cancellation). `Symbolic.fullySimplify` iterates until the expression stops changing (max 100 iterations).
+
+### Symbolic differentiation
+
+```fsharp
+// Differentiate expression w.r.t. DiffVar index 0
+let derivative = Symbolic.diff expr 0
+// Applies standard rules: sum, product, quotient, chain
+// Result is automatically simplified
+```
+
+### Closed-form detection
+
+`Analysis.analyzeModel` inspects a model's structure and attempts to match it against known analytical solutions:
+
+```fsharp
+let callModel = model {
+    let dt = (1.0f / 252.0f).C
+    let! z = normal
+    let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
+    let! df = decay 0.05f.C dt
+    return Expr.max (stock - 100.0f) 0.0f.C * df
+}
+
+match Analysis.analyzeModel callModel with
+| ClosedForm solution ->
+    let price = Analysis.evaluate solution
+    let greeks = Analysis.evaluateGreeks solution
+    printfn "BS Price: %.4f, Delta: %.4f" price greeks.Delta
+| RequiresMC reason ->
+    printfn "Needs Monte Carlo: %s" reason
+```
+
+Detected patterns: `BlackScholesCall`, `BlackScholesPut`, `Forward`, `ZeroCouponBond`.
+
+---
+
+## GPU memory optimization
+
+### Pinned memory transfers
+
+Page-locked (pinned) memory enables DMA transfers between CPU and GPU, bypassing the OS page fault mechanism. The `PinnedPool` class manages a reusable pool of pinned buffers:
+
+```fsharp
+use sim = Simulation.create GPU 1_000_000 252
+use pool = new PinnedPool(sim.Accelerator)
+
+// Pinned fold — uses DMA for surface upload and result download
+let results = Simulation.foldPinned sim pool myModel
+```
+
+For lower-level control:
+
+```fsharp
+// Direct transfer helpers
+let deviceBuf = Transfer.copyToDevicePinned accel hostData
+let hostData = Transfer.copyFromDevicePinned accel deviceBuf
+
+// Async transfers via streams
+use stream = accel.CreateStream()
+Transfer.copyToDeviceAsync stream pinnedSrc deviceTarget
+Transfer.copyFromDeviceAsync stream deviceSrc pinnedDst
+stream.Synchronize()
+```
+
+### Multi-device simulation
+
+Split work across multiple GPU accelerators:
+
+```fsharp
+let config = { DeviceType = GPU; DeviceCount = 2 }
+use sim = Simulation.createMulti config 1_000_000 252
+let results = Simulation.foldMulti sim myModel
+// Scenarios split across GPUs with unique random seeds per device slice
+```
+
+Each device gets a slice of scenarios with `indexOffset` ensuring unique random streams. Results are concatenated automatically.
+
+### Output formats
+
+Export simulation results to CSV or Parquet:
+
+```fsharp
+// CSV export
+Output.writeFold "results.csv" Csv values
+Output.writeScan "paths.csv" Csv scanData
+
+// Parquet export (columnar, compressed)
+Output.writeFold "results.parquet" Parquet values
+Output.writeScan "paths.parquet" Parquet scanData
+```
+
+---
+
+## Feature composability
+
+The features compose naturally because they all operate on the same `Expr` AST:
+
+### AD + any generator
+
+`DiffVar` composes with all generators — `gbm`, `heston`, `vasicek`, `cir`, and any custom generator. The AD transformation is applied after model construction, so generators don't need to know about differentiation:
+
+```fsharp
+// Heston vega via AD — just replace vol parameter with DiffVar
+let vegaModel = model {
+    let! dt = scheduleDt sched
+    let! z = normal
+    let! stock = heston z 0.05f.C (DiffVar(0, 0.04f)) 1.5f.C 0.04f.C 0.3f.C -0.7f 100.0f.C dt
+    let! df = decay 0.05f.C dt
+    return Expr.max (stock - 100.0f) 0.0f.C * df
+}
+let expanded, _ = CompilerDiff.transformDual vegaModel
+```
+
+### Symbolic simplify on derivatives
+
+Derivative expressions from AD can be simplified before compilation, reducing kernel size:
+
+```fsharp
+let expanded, _ = CompilerDiff.transformDual myModel
+// Derivative accumulators contain expressions like:
+//   Mul(Const 0.0f, x) + Mul(Const 1.0f, y)
+// fullySimplify collapses these to just: y
+```
+
+### Kernel caching across multi-device
+
+Compiled kernels are cached by model identity (`ConditionalWeakTable`). When using multi-device simulation, all accelerators share the same compiled kernel — Roslyn compilation happens once.
+
+### Batch + AD
+
+AD composes with batch simulation. Each batch element computes its own derivatives:
+
+```fsharp
+let batchModel = model {
+    let! spot = batchInput [| 90.0f; 100.0f; 110.0f |]
+    let! z = normal
+    let dt = (1.0f / 252.0f).C
+    let! stock = gbm z (DiffVar(0, 0.05f)) 0.20f.C spot dt
+    let! df = decay (DiffVar(0, 0.05f)) dt
+    return Expr.max (stock - 100.0f) 0.0f.C * df
+}
+let expanded, _ = CompilerDiff.transformDual batchModel
+```
 
 ---
 

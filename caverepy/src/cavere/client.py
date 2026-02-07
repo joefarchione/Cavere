@@ -190,9 +190,16 @@ class CavereClient:
     # ── Simple simulation ──────────────────────────────────────────
 
     def fold(
-        self, model_spec: pb.ModelSpec, num_scenarios: int, device: str = "CPU"
+        self,
+        model_spec: pb.ModelSpec,
+        num_scenarios: int,
+        device: str = "CPU",
+        device_count: int = 0,
     ) -> NDArray[np.float32]:
-        req = pb.SimulationRequest(model=model_spec, num_scenarios=num_scenarios, device=_device_enum(device))
+        req = pb.SimulationRequest(
+            model=model_spec, num_scenarios=num_scenarios,
+            device=_device_enum(device), device_count=device_count,
+        )
         resp = self.stub.Fold(req)
         return np.array(resp.values, dtype=np.float32)
 
@@ -289,6 +296,63 @@ class CavereClient:
         for chunk in self.stub.StreamBatchFold(req):
             arr = np.array(chunk.values, dtype=np.float32)
             yield chunk.start_index, arr
+
+    # ── Automatic differentiation ─────────────────────────────────
+
+    def fold_diff(
+        self,
+        model_spec: pb.ModelSpec,
+        num_scenarios: int,
+        device: str = "CPU",
+        diff_mode: str = "DUAL",
+        frequency: str = "TERMINAL",
+    ) -> tuple[NDArray[np.float32], dict[str, NDArray[np.float32]]]:
+        """Forward-mode AD (Dual or HyperDual). Returns (values, derivative_observers)."""
+        mode_map = {
+            "DUAL": pb.DIFF_DUAL,
+            "HYPERDUAL_DIAG": pb.DIFF_HYPERDUAL_DIAG,
+            "HYPERDUAL_FULL": pb.DIFF_HYPERDUAL_FULL,
+        }
+        req = pb.DiffRequest(
+            model=model_spec, num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            diff_mode=mode_map.get(diff_mode.upper(), pb.DIFF_DUAL),
+            frequency=_freq_enum(frequency),
+        )
+        resp = self.stub.FoldDiff(req)
+        finals = np.array(resp.finals, dtype=np.float32)
+        observers: dict[str, NDArray[np.float32]] = {}
+        for od in resp.observers:
+            observers[od.name] = np.array(od.values, dtype=np.float32).reshape(od.num_obs, od.num_paths)
+        return finals, observers
+
+    def fold_adjoint(
+        self,
+        model_spec: pb.ModelSpec,
+        num_scenarios: int,
+        device: str = "CPU",
+    ) -> tuple[NDArray[np.float32], NDArray[np.float32], list[int]]:
+        """Reverse-mode AD. Returns (values, adjoints[scenarios, diff_vars], diff_var_indices)."""
+        req = pb.AdjointRequest(
+            model=model_spec, num_scenarios=num_scenarios, device=_device_enum(device),
+        )
+        resp = self.stub.FoldAdjoint(req)
+        values = np.array(resp.values, dtype=np.float32)
+        adjoints = np.array(resp.adjoints, dtype=np.float32).reshape(resp.num_scenarios, resp.num_diff_vars)
+        diff_var_indices = list(resp.diff_var_indices)
+        return values, adjoints, diff_var_indices
+
+    def recommend(self, model_spec: pb.ModelSpec) -> tuple[str | None, bool, str]:
+        """Get AD mode recommendation. Returns (mode_name, has_diff_vars, description)."""
+        resp = self.stub.Recommend(model_spec)
+        mode_names = {
+            pb.DIFF_DUAL: "DUAL",
+            pb.DIFF_HYPERDUAL_DIAG: "HYPERDUAL_DIAG",
+            pb.DIFF_HYPERDUAL_FULL: "HYPERDUAL_FULL",
+            pb.DIFF_ADJOINT: "ADJOINT",
+        }
+        mode = mode_names.get(resp.recommended_mode) if resp.has_diff_vars else None
+        return mode, resp.has_diff_vars, resp.description
 
     # ── Session management ─────────────────────────────────────────
 

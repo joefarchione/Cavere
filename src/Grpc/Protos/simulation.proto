@@ -15,6 +15,11 @@ service SimulationService {
   rpc BatchFoldMeans (BatchRequest)     returns (FoldResponse);
   rpc StreamBatchFold (BatchRequest)    returns (stream FoldChunk);
 
+  // Automatic differentiation
+  rpc FoldDiff (DiffRequest)            returns (WatchResponse);
+  rpc FoldAdjoint (AdjointRequest)      returns (AdjointResponse);
+  rpc Recommend (ModelSpec)             returns (RecommendResponse);
+
   // Session management
   rpc CreateSession (CreateSessionRequest)  returns (SessionResponse);
   rpc DestroySession (SessionId)            returns (Empty);
@@ -29,6 +34,7 @@ message SimulationRequest {
   ModelSpec model = 1;
   int32 num_scenarios = 2;
   DeviceType device = 3;
+  int32 device_count = 4;  // >1 enables multi-device splitting
 }
 
 message WatchRequest {
@@ -51,6 +57,22 @@ message BatchWatchRequest {
   DeviceType device = 3;
   repeated float batch_values = 4;
   Frequency frequency = 5;
+}
+
+// Automatic differentiation requests
+
+message DiffRequest {
+  ModelSpec model = 1;
+  int32 num_scenarios = 2;
+  DeviceType device = 3;
+  DiffMode diff_mode = 4;
+  Frequency frequency = 5;  // observation frequency for derivative observers
+}
+
+message AdjointRequest {
+  ModelSpec model = 1;
+  int32 num_scenarios = 2;
+  DeviceType device = 3;
 }
 
 message CreateSessionRequest {
@@ -193,6 +215,13 @@ enum Frequency {
   ANNUALLY = 5;
 }
 
+enum DiffMode {
+  DIFF_DUAL = 0;
+  DIFF_HYPERDUAL_DIAG = 1;
+  DIFF_HYPERDUAL_FULL = 2;
+  DIFF_ADJOINT = 3;
+}
+
 // Responses
 
 message FoldResponse {
@@ -232,6 +261,20 @@ message FoldChunk {
 
 message SourceResponse {
   string csharp_source = 1;
+}
+
+message AdjointResponse {
+  repeated float values = 1;
+  repeated float adjoints = 2;  // flat [numScenarios * numDiffVars], row-major
+  int32 num_scenarios = 3;
+  int32 num_diff_vars = 4;
+  repeated int32 diff_var_indices = 5;
+}
+
+message RecommendResponse {
+  DiffMode recommended_mode = 1;
+  bool has_diff_vars = 2;
+  string description = 3;
 }
 
 // Custom model via expression tree
@@ -299,7 +342,13 @@ message ExprNode {
     ExprNode floor = 26;
     SurfaceAtOp surface_at = 27;
     BinSearchOp bin_search = 28;
+    DiffVarOp diff_var = 29;
   }
+}
+
+message DiffVarOp {
+  int32 index = 1;
+  float value = 2;
 }
 
 message BinaryOp {

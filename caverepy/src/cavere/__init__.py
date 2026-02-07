@@ -13,12 +13,13 @@ from cavere.client import (
     vasicek,
     vol_surface,
 )
-from cavere.expr import AccumRef, Const, Expr, ModelBuilder, Normal, TimeIndex, Uniform
+from cavere.expr import AccumRef, Const, DiffVar, Expr, ModelBuilder, Normal, TimeIndex, Uniform
 
 __all__ = [
     "AccumRef",
     "CavereClient",
     "Const",
+    "DiffVar",
     "Expr",
     "ModelBuilder",
     "Normal",
