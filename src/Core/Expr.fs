@@ -27,6 +27,7 @@ type Expr =
     | Abs of Expr
     | BatchRef of surfaceId: int
     | BinSearch of surfaceId: int * axisOff: int * axisCnt: int * value: Expr
+    | DiffVar of index: int * value: float32
 
     // Binary: Expr op Expr
     static member (+)(a: Expr, b: Expr) = Add(a, b)
@@ -63,6 +64,13 @@ type Expr =
     static member (/)(a: Expr, b: float32) = Div(a, Const b)
     static member (/)(a: float32, b: Expr) = Div(Const a, b)
 
+/// Differentiation mode for automatic differentiation.
+type DiffMode =
+    | Dual                         // 1st order only (fastest)
+    | HyperDual of diagonal: bool  // diagonal=true: only d²V/dSi², diagonal=false: all crosses
+    | Jet of order: int            // Arbitrary order Taylor
+    | Adjoint                      // Backward mode (all 1st order, memory efficient)
+
 module Expr =
     let exp e = Exp e
     let log e = Log e
@@ -74,6 +82,7 @@ module Expr =
     let clip lo hi x = Max(lo, Min(hi, x))
     let floor e = Floor e
     let surfaceAt sid index = SurfaceAt(sid, index)
+    let diffVar idx value = DiffVar(idx, value)
 
 [<AutoOpen>]
 module ExprExtensions =

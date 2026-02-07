@@ -15,6 +15,7 @@
     <Compile Include="Compiler.Codegen.fs" />
     <Compile Include="Compiler.Regular.fs" />
     <Compile Include="Compiler.Batch.fs" />
+    <Compile Include="Compiler.Diff.fs" />
     <Compile Include="Compiler.fs" />
     <Compile Include="Device.fs" />
     <Compile Include="Engine.fs" />

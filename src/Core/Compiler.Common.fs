@@ -68,7 +68,7 @@ module CompilerCommon =
 
     let rec emitExpr (layout: SurfaceLayout) (expr: Expr) : string =
         match expr with
-        | Const v ->
+        | Const v | DiffVar(_, v) ->
             if Single.IsInfinity(v) || Single.IsNaN(v) then
                 sprintf "%.8ef" v
             else
@@ -117,7 +117,7 @@ module CompilerCommon =
 
     let rec collectAccumRefs (expr: Expr) : Set<int> =
         match expr with
-        | Const _ | TimeIndex | Normal _ | Uniform _ | Lookup1D _ | BatchRef _ -> Set.empty
+        | Const _ | TimeIndex | Normal _ | Uniform _ | Lookup1D _ | BatchRef _ | DiffVar _ -> Set.empty
         | AccumRef id -> Set.singleton id
         | Floor a -> collectAccumRefs a
         | SurfaceAt(_, idx) -> collectAccumRefs idx
@@ -135,7 +135,7 @@ module CompilerCommon =
 
     let rec collectSurfaceIds (expr: Expr) : Set<int> =
         match expr with
-        | Const _ | TimeIndex | Normal _ | Uniform _ | AccumRef _ -> Set.empty
+        | Const _ | TimeIndex | Normal _ | Uniform _ | AccumRef _ | DiffVar _ -> Set.empty
         | Lookup1D sid | BatchRef sid -> Set.singleton sid
         | SurfaceAt(sid, idx) -> collectSurfaceIds idx |> Set.add sid
         | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> collectSurfaceIds a
