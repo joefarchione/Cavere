@@ -98,6 +98,17 @@ class BatchRefExpr(Expr):
         return pb.ExprNode(batch_ref_id=self.surface_id)
 
 
+class DiffVar(Expr):
+    """Differentiable parameter. Mark parameters for automatic differentiation."""
+
+    def __init__(self, index: int, value: float) -> None:
+        self.index = index
+        self.value = float(value)
+
+    def to_proto(self) -> pb.ExprNode:
+        return pb.ExprNode(diff_var=pb.DiffVarOp(index=self.index, value=self.value))
+
+
 class _BinaryExpr(Expr):
     def __init__(self, op: str, left: Expr, right: Expr) -> None:
         self.op = op

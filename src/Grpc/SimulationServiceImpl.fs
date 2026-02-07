@@ -34,8 +34,14 @@ type SimulationServiceImpl() =
             let m = ModelFactory.buildModel request.Model
             let steps = ModelFactory.getSteps request.Model
             let device = ModelFactory.mapDeviceType request.Device
-            use sim = Simulation.create device request.NumScenarios steps
-            let values = Simulation.fold sim m
+            let values =
+                if request.DeviceCount > 1 then
+                    let config = { DeviceType = device; DeviceCount = request.DeviceCount }
+                    use sim = Simulation.createMulti config request.NumScenarios steps
+                    Simulation.foldMulti sim m
+                else
+                    use sim = Simulation.create device request.NumScenarios steps
+                    Simulation.fold sim m
             let resp = FoldResponse()
             resp.Values.AddRange(values)
             resp)
@@ -137,6 +143,57 @@ type SimulationServiceImpl() =
                 do! responseStream.WriteAsync(chunk)
                 startIdx <- startIdx + count
         } :> Task
+
+    // ── Automatic differentiation RPCs ────────────────────────────────
+
+    override _.FoldDiff(request: DiffRequest, _context: ServerCallContext) =
+        Task.FromResult(
+            let m = ModelFactory.buildModel request.Model
+            let steps = ModelFactory.getSteps request.Model
+            let device = ModelFactory.mapDeviceType request.Device
+            let freq = ModelFactory.mapFrequency request.Frequency
+            let mode = ModelFactory.mapDiffMode request.DiffMode
+            let transformed =
+                match mode with
+                | Cavere.Core.DiffMode.Dual ->
+                    let m', _ = CompilerDiff.transformDual m in m'
+                | Cavere.Core.DiffMode.HyperDual diagonal ->
+                    let m', _ = CompilerDiff.transformHyperDual diagonal m in m'
+                | _ -> failwith "FoldDiff only supports Dual and HyperDual modes. Use FoldAdjoint for Adjoint mode."
+            use sim = Simulation.create device request.NumScenarios steps
+            let finals, wr = Simulation.foldWatch sim transformed freq
+            packWatchResponse finals wr)
+
+    override _.FoldAdjoint(request: AdjointRequest, _context: ServerCallContext) =
+        Task.FromResult(
+            let m = ModelFactory.buildModel request.Model
+            let steps = ModelFactory.getSteps request.Model
+            let device = ModelFactory.mapDeviceType request.Device
+            use sim = Simulation.create device request.NumScenarios steps
+            let values, adjoints = Simulation.foldAdjoint sim m
+            let numDiffVars = Array2D.length2 adjoints
+            let diffVars = CompilerDiff.collectModelDiffVars m
+            let resp = AdjointResponse(NumScenarios = request.NumScenarios, NumDiffVars = numDiffVars)
+            resp.Values.AddRange(values)
+            resp.DiffVarIndices.AddRange(diffVars)
+            for s in 0 .. request.NumScenarios - 1 do
+                for d in 0 .. numDiffVars - 1 do
+                    resp.Adjoints.Add(adjoints.[s, d])
+            resp)
+
+    override _.Recommend(request: ModelSpec, _context: ServerCallContext) =
+        Task.FromResult(
+            let m = ModelFactory.buildModel request
+            let mode, desc = CompilerDiff.recommend m
+            let hasDv = CompilerDiff.hasDiffVars m
+            let resp = RecommendResponse(HasDiffVars = hasDv, Description = desc)
+            match mode with
+            | Some Cavere.Core.DiffMode.Dual -> resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffDual
+            | Some (Cavere.Core.DiffMode.HyperDual true) -> resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffHyperdualDiag
+            | Some (Cavere.Core.DiffMode.HyperDual false) -> resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffHyperdualFull
+            | Some Cavere.Core.DiffMode.Adjoint -> resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffAdjoint
+            | _ -> ()
+            resp)
 
     // ── Session management ────────────────────────────────────────────
 
