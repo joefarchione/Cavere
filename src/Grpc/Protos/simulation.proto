@@ -20,6 +20,13 @@ service SimulationService {
   rpc FoldAdjoint (AdjointRequest)      returns (AdjointResponse);
   rpc Recommend (ModelSpec)             returns (RecommendResponse);
 
+  // Kernel management — compile once, run many
+  rpc CompileKernel (CompileKernelRequest)   returns (KernelResponse);
+  rpc FoldKernel (KernelRunRequest)          returns (FoldResponse);
+  rpc FoldWatchKernel (KernelWatchRequest)   returns (WatchResponse);
+  rpc ScanKernel (KernelRunRequest)          returns (ScanResponse);
+  rpc DestroyKernel (KernelId)               returns (Empty);
+
   // Session management
   rpc CreateSession (CreateSessionRequest)  returns (SessionResponse);
   rpc DestroySession (SessionId)            returns (Empty);
@@ -34,7 +41,8 @@ message SimulationRequest {
   ModelSpec model = 1;
   int32 num_scenarios = 2;
   DeviceType device = 3;
-  int32 device_count = 4;  // >1 enables multi-device splitting
+  int32 device_count = 4;   // >1 enables multi-device splitting
+  bool use_pinned = 5;      // use pinned memory for GPU transfers
 }
 
 message WatchRequest {
@@ -42,6 +50,8 @@ message WatchRequest {
   int32 num_scenarios = 2;
   DeviceType device = 3;
   Frequency frequency = 4;
+  int32 device_count = 5;
+  bool use_pinned = 6;
 }
 
 message BatchRequest {
@@ -49,6 +59,8 @@ message BatchRequest {
   int32 num_scenarios = 2;
   DeviceType device = 3;
   repeated float batch_values = 4;
+  int32 device_count = 5;
+  bool use_pinned = 6;
 }
 
 message BatchWatchRequest {
@@ -57,6 +69,8 @@ message BatchWatchRequest {
   DeviceType device = 3;
   repeated float batch_values = 4;
   Frequency frequency = 5;
+  int32 device_count = 6;
+  bool use_pinned = 7;
 }
 
 // Automatic differentiation requests
@@ -66,14 +80,53 @@ message DiffRequest {
   int32 num_scenarios = 2;
   DeviceType device = 3;
   DiffMode diff_mode = 4;
-  Frequency frequency = 5;  // observation frequency for derivative observers
+  Frequency frequency = 5;
+  int32 device_count = 6;
+  bool use_pinned = 7;
 }
 
 message AdjointRequest {
   ModelSpec model = 1;
   int32 num_scenarios = 2;
   DeviceType device = 3;
+  int32 device_count = 4;
+  bool use_pinned = 5;
 }
+
+// Kernel management requests
+
+message CompileKernelRequest {
+  ModelSpec model = 1;
+  bool batch = 2;          // true = compile as batch kernel
+}
+
+message KernelRunRequest {
+  string kernel_id = 1;
+  int32 num_scenarios = 2;
+  DeviceType device = 3;
+  int32 device_count = 4;
+  bool use_pinned = 5;
+}
+
+message KernelWatchRequest {
+  string kernel_id = 1;
+  int32 num_scenarios = 2;
+  DeviceType device = 3;
+  Frequency frequency = 4;
+  int32 device_count = 5;
+  bool use_pinned = 6;
+}
+
+message KernelId {
+  string id = 1;
+}
+
+message KernelResponse {
+  string kernel_id = 1;
+  string csharp_source = 2;
+}
+
+// Session management
 
 message CreateSessionRequest {
   DeviceType device = 1;

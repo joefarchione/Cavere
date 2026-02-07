@@ -6,10 +6,19 @@ open System.Threading.Tasks
 open Grpc.Core
 open Cavere.Core
 
+/// Stored compiled kernel with its model metadata.
+type StoredKernel = {
+    Kernel: CompiledKernel
+    Model: Model
+    Steps: int
+    IsBatch: bool
+}
+
 type SimulationServiceImpl() =
     inherit SimulationService.SimulationServiceBase()
 
     let sessions = ConcurrentDictionary<string, Simulation>()
+    let kernels = ConcurrentDictionary<string, StoredKernel>()
 
     let chunkSize = 10_000
 
@@ -27,6 +36,19 @@ type SimulationServiceImpl() =
             resp.Observers.Add(od)
         resp
 
+    let runFold device deviceCount usePinned numScenarios steps (m: Model) =
+        if deviceCount > 1 then
+            let config = { DeviceType = device; DeviceCount = deviceCount }
+            use sim = Simulation.createMulti config numScenarios steps
+            Simulation.foldMulti sim m
+        elif usePinned then
+            use sim = Simulation.create device numScenarios steps
+            use pool = new PinnedPool(sim.Accelerator)
+            Simulation.foldPinned sim pool m
+        else
+            use sim = Simulation.create device numScenarios steps
+            Simulation.fold sim m
+
     // ── Simple simulation RPCs ────────────────────────────────────────
 
     override _.Fold(request: SimulationRequest, _context: ServerCallContext) =
@@ -34,14 +56,7 @@ type SimulationServiceImpl() =
             let m = ModelFactory.buildModel request.Model
             let steps = ModelFactory.getSteps request.Model
             let device = ModelFactory.mapDeviceType request.Device
-            let values =
-                if request.DeviceCount > 1 then
-                    let config = { DeviceType = device; DeviceCount = request.DeviceCount }
-                    use sim = Simulation.createMulti config request.NumScenarios steps
-                    Simulation.foldMulti sim m
-                else
-                    use sim = Simulation.create device request.NumScenarios steps
-                    Simulation.fold sim m
+            let values = runFold device request.DeviceCount request.UsePinned request.NumScenarios steps m
             let resp = FoldResponse()
             resp.Values.AddRange(values)
             resp)
@@ -97,8 +112,18 @@ type SimulationServiceImpl() =
             let m = ModelFactory.buildBatchModel request.Model batchValues
             let steps = ModelFactory.getSteps request.Model
             let device = ModelFactory.mapDeviceType request.Device
-            use sim = BatchSimulation.create device batchValues.Length request.NumScenarios steps
-            let values = BatchSimulation.fold sim m
+            let values =
+                if request.DeviceCount > 1 then
+                    let config = { DeviceType = device; DeviceCount = request.DeviceCount }
+                    let deviceSet = Device.createMulti config
+                    try
+                        let kernel = Kernel.compileBatchFor m batchValues.Length
+                        Engine.foldBatchMulti deviceSet kernel batchValues.Length request.NumScenarios steps
+                    finally
+                        Device.disposeMulti deviceSet
+                else
+                    use sim = BatchSimulation.create device batchValues.Length request.NumScenarios steps
+                    BatchSimulation.fold sim m
             let resp = FoldResponse()
             resp.Values.AddRange(values)
             resp)
@@ -194,6 +219,84 @@ type SimulationServiceImpl() =
             | Some Cavere.Core.DiffMode.Adjoint -> resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffAdjoint
             | _ -> ()
             resp)
+
+    // ── Kernel management RPCs ──────────────────────────────────────
+
+    override _.CompileKernel(request: CompileKernelRequest, _context: ServerCallContext) =
+        Task.FromResult(
+            let m = ModelFactory.buildModel request.Model
+            let steps = ModelFactory.getSteps request.Model
+            let kernel, source =
+                if request.Batch then
+                    Kernel.compileBatch m, Kernel.sourceBatch m
+                else
+                    Kernel.compile m, Kernel.source m
+            let id = Guid.NewGuid().ToString("N")
+            kernels.[id] <- { Kernel = kernel; Model = m; Steps = steps; IsBatch = request.Batch }
+            KernelResponse(KernelId = id, CsharpSource = source))
+
+    override _.FoldKernel(request: KernelRunRequest, _context: ServerCallContext) =
+        Task.FromResult(
+            match kernels.TryGetValue(request.KernelId) with
+            | false, _ -> failwith $"Kernel not found: {request.KernelId}"
+            | true, stored ->
+                let device = ModelFactory.mapDeviceType request.Device
+                let values =
+                    if request.DeviceCount > 1 then
+                        let config = { DeviceType = device; DeviceCount = request.DeviceCount }
+                        let deviceSet = Device.createMulti config
+                        try
+                            Engine.foldMulti deviceSet stored.Kernel request.NumScenarios stored.Steps
+                        finally
+                            Device.disposeMulti deviceSet
+                    elif request.UsePinned then
+                        let ctx, accel = Device.create device
+                        try
+                            use pool = new PinnedPool(accel)
+                            Engine.foldPinned accel pool stored.Kernel request.NumScenarios stored.Steps 0
+                        finally
+                            accel.Dispose()
+                            ctx.Dispose()
+                    else
+                        let ctx, accel = Device.create device
+                        try
+                            Engine.fold accel stored.Kernel request.NumScenarios stored.Steps 0
+                        finally
+                            accel.Dispose()
+                            ctx.Dispose()
+                let resp = FoldResponse()
+                resp.Values.AddRange(values)
+                resp)
+
+    override _.FoldWatchKernel(request: KernelWatchRequest, _context: ServerCallContext) =
+        Task.FromResult(
+            match kernels.TryGetValue(request.KernelId) with
+            | false, _ -> failwith $"Kernel not found: {request.KernelId}"
+            | true, stored ->
+                let device = ModelFactory.mapDeviceType request.Device
+                let freq = ModelFactory.mapFrequency request.Frequency
+                use sim = Simulation.create device request.NumScenarios stored.Steps
+                let finals, wr = Simulation.foldWatchKernel sim stored.Kernel freq
+                packWatchResponse finals wr)
+
+    override _.ScanKernel(request: KernelRunRequest, _context: ServerCallContext) =
+        Task.FromResult(
+            match kernels.TryGetValue(request.KernelId) with
+            | false, _ -> failwith $"Kernel not found: {request.KernelId}"
+            | true, stored ->
+                let device = ModelFactory.mapDeviceType request.Device
+                use sim = Simulation.create device request.NumScenarios stored.Steps
+                let data = Simulation.scanKernel sim stored.Kernel
+                let resp = ScanResponse(Steps = Array2D.length1 data, NumScenarios = Array2D.length2 data)
+                for i in 0 .. Array2D.length1 data - 1 do
+                    for j in 0 .. Array2D.length2 data - 1 do
+                        resp.Values.Add(data.[i, j])
+                resp)
+
+    override _.DestroyKernel(request: KernelId, _context: ServerCallContext) =
+        Task.FromResult(
+            kernels.TryRemove(request.Id) |> ignore
+            Empty())
 
     // ── Session management ────────────────────────────────────────────
 
