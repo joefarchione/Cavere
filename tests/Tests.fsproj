@@ -11,6 +11,7 @@
     <Compile Include="RatesTests.fs" />
     <Compile Include="NestedSimTests.fs" />
     <Compile Include="ScheduleTests.fs" />
+    <Compile Include="SymbolicTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
