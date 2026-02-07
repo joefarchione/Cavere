@@ -139,13 +139,3 @@ dotnet run --project src/App/App.fsproj         # Run console demo
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) for details.
-
-## Commercial Support
-
-Need help integrating Cavere into your production pipeline?
-I offer consulting services for:
-- Custom generator implementation (ESG, complex riders)
-- GPU infrastructure setup and optimization
-- Legacy model migration (AXIS/Prophet to Cavere)
-
-[Contact me](mailto:your.email@example.com) for rates and availability.
