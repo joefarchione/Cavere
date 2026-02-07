@@ -9,6 +9,8 @@
     <Compile Include="Expr.fs" />
     <Compile Include="Schedule.fs" />
     <Compile Include="Model.fs" />
+    <Compile Include="Symbolic.fs" />
+    <Compile Include="Analysis.fs" />
     <Compile Include="Compiler.Common.fs" />
     <Compile Include="Compiler.Codegen.fs" />
     <Compile Include="Compiler.Regular.fs" />
