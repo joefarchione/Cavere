@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="EuropeanCall.fs" />
+    <Compile Include="LocalVol.fs" />
+    <Compile Include="HestonModel.fs" />
+    <Compile Include="CustomGenerator.fs" />
+    <Compile Include="ForwardRateCurve.fs" />
+    <Compile Include="CalendarSchedule.fs" />
+    <Compile Include="NestedSimulation.fs" />
+    <Compile Include="FixedIndexedAnnuity.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\Core\Core.fsproj" />
+    <ProjectReference Include="..\src\Generators\Generators.fsproj" />
+  </ItemGroup>
+
+</Project>

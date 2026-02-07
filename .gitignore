@@ -1,0 +1,42 @@
+# .NET / C# / F#
+bin/
+obj/
+*.user
+*.userosscache
+*.sln.docstates
+**/bin/
+**/obj/
+**/ref/
+**/refint/
+**/nul
+
+# IDEs
+.vs/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AI assistants
+.claude/
+.gemini/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary files
+*.tmp
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+.venv/
+*.egg
+caverepy/src/cavere/_generated/simulation_pb2.py
+caverepy/src/cavere/_generated/simulation_pb2_grpc.py
