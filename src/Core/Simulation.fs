@@ -1,8 +1,6 @@
 namespace Cavere.Core
 
 open System
-open System.Runtime.CompilerServices
-open ILGPU.Runtime
 
 // ════════════════════════════════════════════════════════════════════════════
 // Simple Simulation — for non-batch models
@@ -23,26 +21,18 @@ type Simulation(deviceType: DeviceType, numScenarios: int, steps: int) =
 
 module Simulation =
 
-    let private requireSimple (m: Model) =
-        if m.BatchSize > 0 then
-            failwith "Simulation requires a non-batch model. Use BatchSimulation for models with batchInput."
-
-    let private regularCache = ConditionalWeakTable<Model, CompiledKernel>()
-
     let create (deviceType: DeviceType) (numScenarios: int) (steps: int) : Simulation =
         new Simulation(deviceType, numScenarios, steps)
 
-    // ── Source export ────────────────────────────────────────────────────
+    // ── Source export (delegates to Kernel) ───────────────────────────
 
-    let source (m: Model) : string =
-        requireSimple m
-        Compiler.buildSource m |> fst
+    let source (m: Model) : string = Kernel.source m
 
-    // ── Compile once, run many ──────────────────────────────────────────
+    // ── Compile (delegates to Kernel) ────────────────────────────────
 
-    let compile (m: Model) : CompiledKernel =
-        requireSimple m
-        regularCache.GetValue(m, ConditionalWeakTable<_,_>.CreateValueCallback(Compiler.build))
+    let compile (m: Model) : CompiledKernel = Kernel.compile m
+
+    // ── Kernel execution ─────────────────────────────────────────────
 
     let foldKernel (sim: Simulation) (kernel: CompiledKernel) : float32[] =
         Engine.fold sim.Accelerator kernel sim.NumScenarios sim.Steps
@@ -56,16 +46,16 @@ module Simulation =
     let scanKernel (sim: Simulation) (kernel: CompiledKernel) : float32[,] =
         Engine.scan sim.Accelerator kernel sim.NumScenarios sim.Steps
 
-    // ── Convenience (compile + run) ─────────────────────────────────────
+    // ── Convenience (compile + run) ──────────────────────────────────
 
     let fold (sim: Simulation) (m: Model) : float32[] =
-        foldKernel sim (compile m)
+        foldKernel sim (Kernel.compile m)
 
     let foldWatch (sim: Simulation) (m: Model) (freq: Frequency) : float32[] * WatchResult =
-        foldWatchKernel sim (compile m) freq
+        foldWatchKernel sim (Kernel.compile m) freq
 
     let scan (sim: Simulation) (m: Model) : float32[,] =
-        scanKernel sim (compile m)
+        scanKernel sim (Kernel.compile m)
 
 // ════════════════════════════════════════════════════════════════════════════
 // Batch Simulation — for models using batchInput
@@ -89,27 +79,19 @@ type BatchSimulation(deviceType: DeviceType, numBatch: int, numScenarios: int, s
 
 module BatchSimulation =
 
-    let private requireBatch (m: Model) (sim: BatchSimulation) =
-        if m.BatchSize = 0 then
-            failwith "BatchSimulation requires a batch model. Use Simulation for models without batchInput."
-        if m.BatchSize <> sim.NumBatch then
-            failwithf "Model batch size (%d) does not match simulation (%d)" m.BatchSize sim.NumBatch
-
     let create (deviceType: DeviceType) (numBatch: int) (numScenarios: int) (steps: int) : BatchSimulation =
         new BatchSimulation(deviceType, numBatch, numScenarios, steps)
 
-    // ── Source export ────────────────────────────────────────────────────
+    // ── Source export (delegates to Kernel) ───────────────────────────
 
-    let source (m: Model) : string =
-        Compiler.buildBatchSource m |> fst
+    let source (m: Model) : string = Kernel.sourceBatch m
 
-    let private batchCache = ConditionalWeakTable<Model, CompiledKernel>()
-
-    // ── Compile once, run many ──────────────────────────────────────────
+    // ── Compile (delegates to Kernel) ────────────────────────────────
 
     let compile (m: Model) (sim: BatchSimulation) : CompiledKernel =
-        requireBatch m sim
-        batchCache.GetValue(m, ConditionalWeakTable<_,_>.CreateValueCallback(Compiler.buildBatch))
+        Kernel.compileBatchFor m sim.NumBatch
+
+    // ── Kernel execution ─────────────────────────────────────────────
 
     let foldKernel (sim: BatchSimulation) (kernel: CompiledKernel) : float32[] =
         Engine.foldBatch sim.Accelerator kernel sim.NumBatch sim.NumScenarios sim.Steps
@@ -121,13 +103,13 @@ module BatchSimulation =
         let numObs = Watcher.numObs interval sim.Steps
         finals, { Buffer = obsBuf; Observers = kernel.Model.Observers; NumObs = numObs; NumPaths = sim.TotalThreads }
 
-    // ── Convenience (compile + run) ─────────────────────────────────────
+    // ── Convenience (compile + run) ──────────────────────────────────
 
     let fold (sim: BatchSimulation) (m: Model) : float32[] =
-        foldKernel sim (compile m sim)
+        foldKernel sim (Kernel.compileBatchFor m sim.NumBatch)
 
     let foldWatch (sim: BatchSimulation) (m: Model) (freq: Frequency) : float32[] * WatchResult =
-        foldWatchKernel sim (compile m sim) freq
+        foldWatchKernel sim (Kernel.compileBatchFor m sim.NumBatch) freq
 
     let foldMeans (sim: BatchSimulation) (m: Model) : float32[] =
         let raw = fold sim m

@@ -17,6 +17,7 @@
     <Compile Include="Device.fs" />
     <Compile Include="Engine.fs" />
     <Compile Include="Watcher.fs" />
+    <Compile Include="Kernel.fs" />
     <Compile Include="Simulation.fs" />
   </ItemGroup>
 
