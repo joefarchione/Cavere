@@ -4,7 +4,12 @@ Domain-agnostic expression DSL, compiler pipeline, and GPU engine. No finance co
 
 ## Namespace
 
-All files use `namespace Cavere.Core`. Compiler is split across prefixed files: `Compiler.Common.fs`, `Compiler.Codegen.fs`, `Compiler.Regular.fs`, `Compiler.Batch.fs`, `Compiler.fs` (facade).
+All files use `namespace Cavere.Core`. Files are organized by prefix:
+
+- **Dsl.** — Expression types, schedule, model builder (`Dsl.Expr.fs`, `Dsl.Schedule.fs`, `Dsl.Model.fs`)
+- **Ast.** — Expression walkers, simplification, analysis (`Ast.Symbolic.fs`, `Ast.Analysis.fs`)
+- **Compiler.** — Code generation pipeline (`Compiler.Common.fs`, `Compiler.Codegen.fs`, `Compiler.Regular.fs`, `Compiler.Batch.fs`, `Compiler.Diff.fs`, `Compiler.Adjoint.fs`, `Compiler.fs`)
+- **Sim.** — Device management, kernel launch, simulation (`Sim.Device.fs`, `Sim.Transfer.fs`, `Sim.Engine.fs`, `Sim.Watcher.fs`, `Sim.Kernel.fs`, `Sim.Simulation.fs`, `Sim.Output.fs`)
 
 ## Key Types
 
@@ -18,7 +23,7 @@ All files use `namespace Cavere.Core`. Compiler is split across prefixed files: 
 
 All primitives have signature `... -> ModelCtx -> 'T` and compose via `let!` in the CE:
 
-- `normal` / `uniform` — allocate fresh random variable ID
+- `normal` / `uniform` / `bernoulli` — allocate fresh random variable ID
 - `evolve init body` — accumulator (AccumRef), body receives self-reference
 - `surface1d` / `surface2d` — register lookup data, return surface ID
 - `schedule` — register dt + year-fraction curves, return `(Expr * Expr)`

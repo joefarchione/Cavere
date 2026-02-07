@@ -136,16 +136,25 @@ dotnet test                                     # Run all tests
 dotnet run --project src/App/App.fsproj         # Run console demo
 ```
 
+## Development
+
+After cloning, enable the pre-commit hooks:
+
+```bash
+git config core.hooksPath hooks
+```
+
+This runs automatically on each commit:
+
+| Language | Tool | Check |
+|----------|------|-------|
+| F# | Fantomas | Formatting (`fantomas --check`) |
+| Python | ruff | Formatting (`ruff format --check`) |
+| Python | ruff | Linting (`ruff check`) |
+| Python | ty | Type checking (`uv run ty check`) |
+
+**Git workflow**: all changes go through `feature/<name>` branches, PR'd into `staging` (squash merge), then `staging` PR'd into `main` (squash merge). Direct pushes to `main` and `staging` are blocked.
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) for details.
-
-## Commercial Support
-
-Need help integrating Cavere into your production pipeline?
-I offer consulting services for:
-- Custom generator implementation (ESG, complex riders)
-- GPU infrastructure setup and optimization
-- Legacy model migration (AXIS/Prophet to Cavere)
-
-[Contact me](mailto:your.email@example.com) for rates and availability.

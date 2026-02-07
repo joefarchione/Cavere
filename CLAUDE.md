@@ -16,19 +16,26 @@ dotnet clean                                          # Clean build artifacts
 
 ```
 Cavere.sln
-├── src/Core/              (F#, net8.0)  — Expr DSL, compiler, engine
-│   ├── Expr.fs            — Expr DU, operator overloads (.C, .>, .<, etc.)
-│   ├── Schedule.fs        — Time grid construction
-│   ├── Model.fs           — Model record, ModelBuilder CE, DSL primitives
-│   ├── Compiler.Common.fs — Surface layout, expression emission, topo sort
-│   ├── Compiler.Codegen.fs— C# templates, dynamic emitters
-│   ├── Compiler.Regular.fs— Fold, FoldWatch, Scan kernels
-│   ├── Compiler.Batch.fs  — FoldBatch, FoldBatchWatch kernels
-│   ├── Compiler.fs        — Unified compiler API facade
-│   ├── Device.fs          — ILGPU Context/Accelerator management
-│   ├── Engine.fs          — Surface packing, kernel launch, result extraction
-│   ├── Watcher.fs         — Observer buffer mgmt, value extraction
-│   └── Simulation.fs      — High-level orchestration
+├── src/Core/                  (F#, net8.0)  — Expr DSL, compiler, engine
+│   ├── Dsl.Expr.fs            — Expr DU, operator overloads (.C, .>, .<, etc.)
+│   ├── Dsl.Schedule.fs        — Time grid construction
+│   ├── Dsl.Model.fs           — Model record, ModelBuilder CE, DSL primitives
+│   ├── Ast.Symbolic.fs        — Expression simplification, symbolic differentiation
+│   ├── Ast.Analysis.fs        — Closed-form detection, path dependence analysis
+│   ├── Compiler.Common.fs     — Surface layout, expression emission, topo sort
+│   ├── Compiler.Codegen.fs    — C# templates, dynamic emitters
+│   ├── Compiler.Regular.fs    — Fold, FoldWatch, Scan kernels
+│   ├── Compiler.Batch.fs      — FoldBatch, FoldBatchWatch kernels
+│   ├── Compiler.Diff.fs       — Forward-mode AD expression transformation
+│   ├── Compiler.Adjoint.fs    — Reverse-mode AD kernel compilation
+│   ├── Compiler.fs            — Unified compiler API facade
+│   ├── Sim.Device.fs          — ILGPU Context/Accelerator management
+│   ├── Sim.Transfer.fs        — Pinned memory pool, DMA transfers
+│   ├── Sim.Engine.fs          — Surface packing, kernel launch, result extraction
+│   ├── Sim.Watcher.fs         — Observer buffer mgmt, value extraction
+│   ├── Sim.Kernel.fs          — Kernel compilation and caching
+│   ├── Sim.Simulation.fs      — High-level orchestration
+│   └── Sim.Output.fs          — CSV and Parquet export
 ├── src/Generators/        (F#, net8.0)  — Finance-specific model primitives
 │   ├── Common.fs          — decay (discount factor accumulator)
 │   ├── Equity.fs          — gbm, heston, multiAssetHeston
