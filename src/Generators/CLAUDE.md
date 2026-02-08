@@ -4,7 +4,7 @@ Finance-specific stochastic process builders. References Core only.
 
 ## Namespaces
 
-- `Cavere.Generators` — base generators (`Common.fs`, `Equity.fs`, `Rates.fs`)
+- `Cavere.Generators` — base generators (`Calendar.fs`, `Common.fs`, `Equity.fs`, `Rates.fs`)
 - `Cavere.Generators.AAA` — Academy Interest Rate Generator (AIRG) ESG. Files prefixed `AAA.*.fs`, each defines a module in the AAA namespace.
 
 ## Generator Signature
@@ -17,6 +17,10 @@ let! stock = gbm z rate vol spot dt
 ```
 
 Writing a new generator: call `normal` and `evolve` inside `fun ctx ->`.
+
+## Calendar.fs
+
+- `businessDays startDate endDate holidays` — builds Schedule from business days (excludes weekends and holidays)
 
 ## Common.fs (AutoOpen)
 
