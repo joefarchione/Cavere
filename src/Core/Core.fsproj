@@ -10,7 +10,7 @@
     <Compile Include="Dsl.Expr.fs" />
     <Compile Include="Dsl.Schedule.fs" />
     <Compile Include="Dsl.Model.fs" />
-    <!-- Ast: Expression walkers, simplification, analysis -->
+    <!-- Ast: Expression walkers, simplification -->
     <Compile Include="Ast.Symbolic.fs" />
     <!-- Compiler: Code generation pipeline -->
     <Compile Include="Compiler.Common.fs" />
