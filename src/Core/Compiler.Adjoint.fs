@@ -237,6 +237,7 @@ module CompilerAdjoint =
             KernelType = kernelType
             SurfaceLayout = layout
             Model = model
+            PackedSurfaces = CompilerCommon.packSurfaces model layout
         },
         info
 

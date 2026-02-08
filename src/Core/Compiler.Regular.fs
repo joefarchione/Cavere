@@ -12,6 +12,7 @@ type CompiledKernel = {
     KernelType: Type
     SurfaceLayout: SurfaceLayout
     Model: Model
+    PackedSurfaces: float32[]
 }
 
 /// Regular (non-batch) kernel compilation: Fold, FoldWatch, Scan.
@@ -189,6 +190,7 @@ module CompilerRegular =
             KernelType = kernelType
             SurfaceLayout = layout
             Model = model
+            PackedSurfaces = CompilerCommon.packSurfaces model layout
         }
 
     let buildSource (model: Model) : string * SurfaceLayout =

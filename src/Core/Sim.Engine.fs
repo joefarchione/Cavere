@@ -1,6 +1,7 @@
 namespace Cavere.Core
 
 open System
+open System.Collections.Concurrent
 open System.Reflection
 open ILGPU
 open ILGPU.Runtime
@@ -9,6 +10,37 @@ module Engine =
 
     let private getMethod (kernel: CompiledKernel) (name: string) =
         kernel.KernelType.GetMethod(name, BindingFlags.Public ||| BindingFlags.Static)
+
+    // ── CPU delegate types and cache ─────────────────────────────────
+
+    type private FoldDelegate = delegate of float32[] * float32[] * int * int * int * int -> unit
+
+    type private FoldWatchDelegate =
+        delegate of float32[] * float32[] * float32[] * int * int * int * int * int * int * int -> unit
+
+    type private ScanDelegate = delegate of float32[] * float32[] * int * int * int * int * int -> unit
+    type private FoldBatchDelegate = delegate of float32[] * float32[] * int * int * int * int * int -> unit
+
+    type private FoldBatchWatchDelegate =
+        delegate of float32[] * float32[] * float32[] * int * int * int * int * int * int * int * int -> unit
+
+    type private FoldAdjointDelegate =
+        delegate of float32[] * float32[] * float32[] * float32[] * int * int * int * int -> unit
+
+    let private delegateCache = ConcurrentDictionary<struct (Type * string), Delegate>()
+
+    let private getDelegate<'d when 'd :> Delegate> (kernel: CompiledKernel) (name: string) : 'd =
+        let key = struct (kernel.KernelType, name)
+
+        let d =
+            delegateCache.GetOrAdd(
+                key,
+                fun _ ->
+                    let mi = getMethod kernel name
+                    Delegate.CreateDelegate(typeof<'d>, mi)
+            )
+
+        d :?> 'd
 
     // ── Simple kernels ─────────────────────────────────────────────────
 
@@ -20,7 +52,7 @@ module Engine =
         (indexOffset: int)
         : float32[] =
 
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
+        let packed = kernel.PackedSurfaces
         use surfBuf = accel.Allocate1D<float32>(max 1 packed.Length)
         surfBuf.View.CopyFromCPU(packed)
         use output = accel.Allocate1D<float32>(numScenarios)
@@ -54,7 +86,7 @@ module Engine =
         (indexOffset: int)
         : float32[] * float32[] =
 
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
+        let packed = kernel.PackedSurfaces
         use surfBuf = accel.Allocate1D<float32>(max 1 packed.Length)
         surfBuf.View.CopyFromCPU(packed)
         use output = accel.Allocate1D<float32>(numScenarios)
@@ -96,7 +128,7 @@ module Engine =
         (indexOffset: int)
         : float32[,] =
 
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
+        let packed = kernel.PackedSurfaces
         use surfBuf = accel.Allocate1D<float32>(max 1 packed.Length)
         surfBuf.View.CopyFromCPU(packed)
         use output = accel.Allocate1D<float32>(numScenarios * steps)
@@ -135,7 +167,7 @@ module Engine =
         (indexOffset: int)
         : float32[] =
 
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
+        let packed = kernel.PackedSurfaces
         use surfBuf = accel.Allocate1D<float32>(max 1 packed.Length)
         surfBuf.View.CopyFromCPU(packed)
 
@@ -173,7 +205,7 @@ module Engine =
         (indexOffset: int)
         : float32[] * float32[] =
 
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
+        let packed = kernel.PackedSurfaces
         use surfBuf = accel.Allocate1D<float32>(max 1 packed.Length)
         surfBuf.View.CopyFromCPU(packed)
 
@@ -221,7 +253,7 @@ module Engine =
         (indexOffset: int)
         : float32[] =
 
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
+        let packed = kernel.PackedSurfaces
         let surfPinned = pool.Rent(max 1L (int64 packed.Length))
 
         try
@@ -275,7 +307,7 @@ module Engine =
         (indexOffset: int)
         : float32[] * float32[] =
 
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
+        let packed = kernel.PackedSurfaces
         let surfPinned = pool.Rent(max 1L (int64 packed.Length))
 
         try
@@ -361,7 +393,7 @@ module Engine =
         (indexOffset: int)
         : float32[] * float32[,] =
 
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
+        let packed = kernel.PackedSurfaces
         use surfBuf = accel.Allocate1D<float32>(max 1 packed.Length)
         surfBuf.View.CopyFromCPU(packed)
         use output = accel.Allocate1D<float32>(numScenarios)
@@ -425,95 +457,75 @@ module Engine =
     // ── Native CPU execution (no ILGPU) ────────────────────────────
 
     let foldCpu (kernel: CompiledKernel) (numScenarios: int) (steps: int) : float32[] =
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
         let output = Array.zeroCreate<float32> numScenarios
-        let methodInfo = getMethod kernel "Fold"
+        let d = getDelegate<FoldDelegate> kernel "Fold"
 
-        methodInfo.Invoke(
-            null,
-            [|
-                output :> obj
-                packed :> obj
-                steps :> obj
-                kernel.Model.NormalCount :> obj
-                kernel.Model.UniformCount :> obj
-                kernel.Model.BernoulliCount :> obj
-            |]
+        d.Invoke(
+            output,
+            kernel.PackedSurfaces,
+            steps,
+            kernel.Model.NormalCount,
+            kernel.Model.UniformCount,
+            kernel.Model.BernoulliCount
         )
-        |> ignore
 
         output
 
     let foldWatchCpu (kernel: CompiledKernel) (numScenarios: int) (steps: int) (interval: int) : float32[] * float32[] =
-
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
         let output = Array.zeroCreate<float32> numScenarios
         let numObs = (steps + interval - 1) / interval
         let numSlots = kernel.Model.Observers.Length
         let obsBufSize = max 1 (numSlots * numObs * numScenarios)
         let obsBuffer = Array.zeroCreate<float32> obsBufSize
-        let methodInfo = getMethod kernel "FoldWatch"
+        let d = getDelegate<FoldWatchDelegate> kernel "FoldWatch"
 
-        methodInfo.Invoke(
-            null,
-            [|
-                output :> obj
-                obsBuffer :> obj
-                packed :> obj
-                steps :> obj
-                kernel.Model.NormalCount :> obj
-                kernel.Model.UniformCount :> obj
-                kernel.Model.BernoulliCount :> obj
-                numScenarios :> obj
-                numObs :> obj
-                interval :> obj
-            |]
+        d.Invoke(
+            output,
+            obsBuffer,
+            kernel.PackedSurfaces,
+            steps,
+            kernel.Model.NormalCount,
+            kernel.Model.UniformCount,
+            kernel.Model.BernoulliCount,
+            numScenarios,
+            numObs,
+            interval
         )
-        |> ignore
 
         output, obsBuffer
 
     let scanCpu (kernel: CompiledKernel) (numScenarios: int) (steps: int) : float32[,] =
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
         let output = Array.zeroCreate<float32> (numScenarios * steps)
-        let methodInfo = getMethod kernel "Scan"
+        let d = getDelegate<ScanDelegate> kernel "Scan"
 
-        methodInfo.Invoke(
-            null,
-            [|
-                output :> obj
-                packed :> obj
-                steps :> obj
-                kernel.Model.NormalCount :> obj
-                kernel.Model.UniformCount :> obj
-                kernel.Model.BernoulliCount :> obj
-                numScenarios :> obj
-            |]
+        d.Invoke(
+            output,
+            kernel.PackedSurfaces,
+            steps,
+            kernel.Model.NormalCount,
+            kernel.Model.UniformCount,
+            kernel.Model.BernoulliCount,
+            numScenarios
         )
-        |> ignore
 
-        Array2D.init steps numScenarios (fun t s -> output.[t * numScenarios + s])
+        let result = Array2D.zeroCreate<float32> steps numScenarios
+        Buffer.BlockCopy(output, 0, result, 0, output.Length * sizeof<float32>)
+        result
 
     let foldBatchCpu (kernel: CompiledKernel) (numBatch: int) (numScenarios: int) (steps: int) : float32[] =
-
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
         let totalThreads = numBatch * numScenarios
         let output = Array.zeroCreate<float32> totalThreads
-        let methodInfo = getMethod kernel "FoldBatch"
+        let d = getDelegate<FoldBatchDelegate> kernel "FoldBatch"
 
-        methodInfo.Invoke(
-            null,
-            [|
-                output :> obj
-                packed :> obj
-                steps :> obj
-                kernel.Model.NormalCount :> obj
-                kernel.Model.UniformCount :> obj
-                kernel.Model.BernoulliCount :> obj
-                numScenarios :> obj
-            |]
+        d.Invoke(
+            output,
+            kernel.PackedSurfaces,
+            steps,
+            kernel.Model.NormalCount,
+            kernel.Model.UniformCount,
+            kernel.Model.BernoulliCount,
+            numScenarios
         )
-        |> ignore
 
         output
 
@@ -525,32 +537,27 @@ module Engine =
         (interval: int)
         : float32[] * float32[] =
 
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
         let totalThreads = numBatch * numScenarios
         let output = Array.zeroCreate<float32> totalThreads
         let numObs = (steps + interval - 1) / interval
         let numSlots = kernel.Model.Observers.Length
         let obsBufSize = max 1 (numSlots * numObs * totalThreads)
         let obsBuffer = Array.zeroCreate<float32> obsBufSize
-        let methodInfo = getMethod kernel "FoldBatchWatch"
+        let d = getDelegate<FoldBatchWatchDelegate> kernel "FoldBatchWatch"
 
-        methodInfo.Invoke(
-            null,
-            [|
-                output :> obj
-                obsBuffer :> obj
-                packed :> obj
-                steps :> obj
-                kernel.Model.NormalCount :> obj
-                kernel.Model.UniformCount :> obj
-                kernel.Model.BernoulliCount :> obj
-                numScenarios :> obj
-                numObs :> obj
-                interval :> obj
-                totalThreads :> obj
-            |]
+        d.Invoke(
+            output,
+            obsBuffer,
+            kernel.PackedSurfaces,
+            steps,
+            kernel.Model.NormalCount,
+            kernel.Model.UniformCount,
+            kernel.Model.BernoulliCount,
+            numScenarios,
+            numObs,
+            interval,
+            totalThreads
         )
-        |> ignore
 
         output, obsBuffer
 
@@ -561,29 +568,24 @@ module Engine =
         (steps: int)
         : float32[] * float32[,] =
 
-        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
         let output = Array.zeroCreate<float32> numScenarios
         let numAccums = info.SortedAccums.Length
         let numDiffVars = info.DiffVars.Length
         let tapeSize = max 1 (numScenarios * numAccums * steps)
         let tape = Array.zeroCreate<float32> tapeSize
         let adjointOut = Array.zeroCreate<float32> (max 1 (numScenarios * numDiffVars))
-        let methodInfo = getMethod kernel "FoldAdjoint"
+        let d = getDelegate<FoldAdjointDelegate> kernel "FoldAdjoint"
 
-        methodInfo.Invoke(
-            null,
-            [|
-                output :> obj
-                packed :> obj
-                tape :> obj
-                adjointOut :> obj
-                steps :> obj
-                kernel.Model.NormalCount :> obj
-                kernel.Model.UniformCount :> obj
-                kernel.Model.BernoulliCount :> obj
-            |]
+        d.Invoke(
+            output,
+            kernel.PackedSurfaces,
+            tape,
+            adjointOut,
+            steps,
+            kernel.Model.NormalCount,
+            kernel.Model.UniformCount,
+            kernel.Model.BernoulliCount
         )
-        |> ignore
 
-        let adjoints = Array2D.init numScenarios numDiffVars (fun s d -> adjointOut.[s * numDiffVars + d])
+        let adjoints = Array2D.init numScenarios numDiffVars (fun s dd -> adjointOut.[s * numDiffVars + dd])
         output, adjoints

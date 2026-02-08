@@ -14,6 +14,8 @@ module CompilerCpu =
         CompilerCodegen.dedent
             """
         using System;
+        using System.Collections.Concurrent;
+        using System.Runtime.CompilerServices;
         using System.Threading.Tasks;
 
         public static class GeneratedKernel
@@ -33,7 +35,8 @@ module CompilerCpu =
         line "        int steps, int normalCount, int uniformCount, int bernoulliCount)"
         line "    {"
         line "        int numScenarios = output.Length;"
-        line "        Parallel.For(0, numScenarios, idx => {"
+        line "        Parallel.ForEach(Partitioner.Create(0, numScenarios), range => {"
+        line "        for (int idx = range.Item1; idx < range.Item2; idx++) {"
         line "            int seed = idx;"
         line "            int t;"
         CompilerCodegen.emitAccumDecls sb layout sortedAccums
@@ -46,7 +49,7 @@ module CompilerCpu =
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         line "            }"
         linef "            output[idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
-        line "        });"
+        line "        }});"
         line "    }"
         sb.ToString()
 
@@ -60,7 +63,8 @@ module CompilerCpu =
         line "        int steps, int normalCount, int uniformCount, int bernoulliCount,"
         line "        int numSims, int numObs, int interval)"
         line "    {"
-        line "        Parallel.For(0, numSims, idx => {"
+        line "        Parallel.ForEach(Partitioner.Create(0, numSims), range => {"
+        line "        for (int idx = range.Item1; idx < range.Item2; idx++) {"
         line "            int seed = idx;"
         line "            int t;"
         CompilerCodegen.emitAccumDecls sb layout sortedAccums
@@ -74,7 +78,7 @@ module CompilerCpu =
         CompilerCodegen.emitObserverRecording sb model layout "obsBuffer" "numSims"
         line "            }"
         linef "            output[idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
-        line "        });"
+        line "        }});"
         line "    }"
         sb.ToString()
 
@@ -87,7 +91,8 @@ module CompilerCpu =
         line "        float[] output, float[] surfaces,"
         line "        int steps, int normalCount, int uniformCount, int bernoulliCount, int numSims)"
         line "    {"
-        line "        Parallel.For(0, numSims, idx => {"
+        line "        Parallel.ForEach(Partitioner.Create(0, numSims), range => {"
+        line "        for (int idx = range.Item1; idx < range.Item2; idx++) {"
         line "            int seed = idx;"
         CompilerCodegen.emitAccumDecls sb layout sortedAccums
         line ""
@@ -99,7 +104,7 @@ module CompilerCpu =
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         linef "                output[t * numSims + idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
         line "            }"
-        line "        });"
+        line "        }});"
         line "    }"
         sb.ToString()
 
@@ -113,7 +118,8 @@ module CompilerCpu =
         line "        int steps, int normalCount, int uniformCount, int bernoulliCount, int numSims)"
         line "    {"
         line "        int totalThreads = output.Length;"
-        line "        Parallel.For(0, totalThreads, idx => {"
+        line "        Parallel.ForEach(Partitioner.Create(0, totalThreads), range => {"
+        line "        for (int idx = range.Item1; idx < range.Item2; idx++) {"
         line "            int batchIdx = idx / numSims;"
         line "            int scenarioIdx = idx % numSims;"
         line "            int seed = scenarioIdx;"
@@ -128,7 +134,7 @@ module CompilerCpu =
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         line "            }"
         linef "            output[idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
-        line "        });"
+        line "        }});"
         line "    }"
         sb.ToString()
 
@@ -142,7 +148,8 @@ module CompilerCpu =
         line "        int steps, int normalCount, int uniformCount, int bernoulliCount,"
         line "        int numSims, int numObs, int interval, int totalThreads)"
         line "    {"
-        line "        Parallel.For(0, totalThreads, idx => {"
+        line "        Parallel.ForEach(Partitioner.Create(0, totalThreads), range => {"
+        line "        for (int idx = range.Item1; idx < range.Item2; idx++) {"
         line "            int batchIdx = idx / numSims;"
         line "            int scenarioIdx = idx % numSims;"
         line "            int seed = scenarioIdx;"
@@ -158,7 +165,7 @@ module CompilerCpu =
         CompilerCodegen.emitObserverRecording sb model layout "obsBuffer" "totalThreads"
         line "            }"
         linef "            output[idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
-        line "        });"
+        line "        }});"
         line "    }"
         sb.ToString()
 
@@ -180,7 +187,8 @@ module CompilerCpu =
         line "        int steps, int normalCount, int uniformCount, int bernoulliCount)"
         line "    {"
         line "        int numScenarios = output.Length;"
-        line "        Parallel.For(0, numScenarios, idx => {"
+        line "        Parallel.ForEach(Partitioner.Create(0, numScenarios), range => {"
+        line "        for (int idx = range.Item1; idx < range.Item2; idx++) {"
         line "            int seed = idx;"
 
         if numAccums > 0 then
@@ -281,7 +289,7 @@ module CompilerCpu =
         for i, dvIdx in info.DiffVars |> Array.indexed do
             linef "            adjointOut[idx * %d + %d] = adj_dv_%d;" numDiffVars i dvIdx
 
-        line "        });"
+        line "        }});"
         line "    }"
         sb.ToString()
 
@@ -325,9 +333,11 @@ module CompilerCpu =
 
     let private stableHash (s: string) =
         let mutable h = 0x811c9dc5u
+
         for c in s do
             h <- h ^^^ uint32 c
             h <- h * 0x01000193u
+
         sprintf "%08X" h
 
     let compile (source: string) : Assembly =
@@ -394,7 +404,8 @@ module CompilerCpu =
             failwithf "Roslyn CPU compilation failed:\n%s\n\nSource:\n%s" errors source
 
         ms.Seek(0L, SeekOrigin.Begin) |> ignore
-        let context = System.Runtime.Loader.AssemblyLoadContext("GeneratedCpuKernel", true)
+        let alcName = $"CpuKernel_{stableHash source}"
+        let context = System.Runtime.Loader.AssemblyLoadContext(alcName, true)
 
 #if DEBUG
         pdbStream.Seek(0L, SeekOrigin.Begin) |> ignore
@@ -424,6 +435,7 @@ module CompilerCpu =
             KernelType = kernelType
             SurfaceLayout = layout
             Model = model
+            PackedSurfaces = CompilerCommon.packSurfaces model layout
         }
 
     let buildSource (model: Model) : string * SurfaceLayout =
@@ -445,6 +457,7 @@ module CompilerCpu =
             KernelType = kernelType
             SurfaceLayout = layout
             Model = model
+            PackedSurfaces = CompilerCommon.packSurfaces model layout
         }
 
     let buildBatchSource (model: Model) : string * SurfaceLayout =
@@ -466,6 +479,7 @@ module CompilerCpu =
             KernelType = kernelType
             SurfaceLayout = layout
             Model = model
+            PackedSurfaces = CompilerCommon.packSurfaces model layout
         },
         info
 

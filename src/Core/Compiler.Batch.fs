@@ -105,6 +105,7 @@ module CompilerBatch =
             KernelType = kernelType
             SurfaceLayout = layout
             Model = model
+            PackedSurfaces = CompilerCommon.packSurfaces model layout
         }
 
     let buildSource (model: Model) : string * SurfaceLayout =
