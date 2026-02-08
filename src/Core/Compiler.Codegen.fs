@@ -138,7 +138,7 @@ module CompilerCodegen =
     let emitAccumUpdates (sb: Text.StringBuilder) (layout: SurfaceLayout) (sortedAccums: (int * AccumDef) list) =
         // Simultaneous update: compute all new values from old, then assign.
         // This ensures AccumRef cross-references see pre-update values,
-        // which is critical for AD derivative accumulators.
+        // which is critical for AD derivative accumulators and Heston variance.
         for (id, def) in sortedAccums do
             sb.AppendLine(sprintf "            float new_accum_%d = %s;" id (CompilerCommon.emitExpr layout def.Body))
             |> ignore
