@@ -20,6 +20,9 @@ type Expr =
     | Gte of Expr * Expr
     | Lt of Expr * Expr
     | Lte of Expr * Expr
+    | And of Expr * Expr
+    | Or of Expr * Expr
+    | Not of Expr
     | Select of cond: Expr * ifTrue: Expr * ifFalse: Expr
     | Neg of Expr
     | Exp of Expr
@@ -42,6 +45,10 @@ type Expr =
     static member (.>=)(a: Expr, b: Expr) = Gte(a, b)
     static member (.<)(a: Expr, b: Expr) = Lt(a, b)
     static member (.<=)(a: Expr, b: Expr) = Lte(a, b)
+
+    // Logical: Expr .op Expr (for combining conditions)
+    static member (.&&)(a: Expr, b: Expr) = And(a, b)
+    static member (.||)(a: Expr, b: Expr) = Or(a, b)
 
     // Comparison: mixed Expr / float32
     static member (.>)(a: Expr, b: float32) = Gt(a, Const b)
@@ -68,10 +75,10 @@ type Expr =
 
 /// Differentiation mode for automatic differentiation.
 type DiffMode =
-    | DualMode                         // 1st order only (fastest)
-    | HyperDualMode of diagonal: bool  // diagonal=true: only d²V/dSi², diagonal=false: all crosses
-    | JetMode of order: int            // Arbitrary order Taylor
-    | AdjointMode                      // Backward mode (all 1st order, memory efficient)
+    | DualMode // 1st order only (fastest)
+    | HyperDualMode of diagonal: bool // diagonal=true: only d²V/dSi², diagonal=false: all crosses
+    | JetMode of order: int // Arbitrary order Taylor
+    | AdjointMode // Backward mode (all 1st order, memory efficient)
 
 module Expr =
     let exp e = Exp e
@@ -81,6 +88,9 @@ module Expr =
     let max a b = Max(a, b)
     let min a b = Min(a, b)
     let select cond ifTrue ifFalse = Select(cond, ifTrue, ifFalse)
+    let not' e = Not e
+    let and' a b = And(a, b)
+    let or' a b = Or(a, b)
     let clip lo hi x = Max(lo, Min(hi, x))
     let floor e = Floor e
     let surfaceAt sid index = SurfaceAt(sid, index)

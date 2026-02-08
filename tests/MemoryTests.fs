@@ -12,8 +12,15 @@ open Cavere.Generators
 
 [<Fact>]
 let ``PinnedPool rent returns valid buffer`` () =
-    let ctx, accel = Device.create CPU
-    use _ctx = { new IDisposable with member _.Dispose() = accel.Dispose(); ctx.Dispose() }
+    let ctx, accel = Device.create Emulated
+
+    use _ctx =
+        { new IDisposable with
+            member _.Dispose() =
+                accel.Dispose()
+                ctx.Dispose()
+        }
+
     use pool = new PinnedPool(accel)
     let buf = pool.Rent(100L)
     Assert.Equal(100L, buf.Extent.Size)
@@ -21,8 +28,15 @@ let ``PinnedPool rent returns valid buffer`` () =
 
 [<Fact>]
 let ``PinnedPool return and re-rent reuses buffer`` () =
-    let ctx, accel = Device.create CPU
-    use _ctx = { new IDisposable with member _.Dispose() = accel.Dispose(); ctx.Dispose() }
+    let ctx, accel = Device.create Emulated
+
+    use _ctx =
+        { new IDisposable with
+            member _.Dispose() =
+                accel.Dispose()
+                ctx.Dispose()
+        }
+
     use pool = new PinnedPool(accel)
     let buf1 = pool.Rent(64L)
     pool.Return(buf1)
@@ -37,26 +51,30 @@ let ``PinnedPool return and re-rent reuses buffer`` () =
 
 [<Fact>]
 let ``Generated source includes indexOffset parameter`` () =
-    let m = model {
-        let dt = (1.0f / 252.0f).C
-        let! z = normal
-        let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
-        let! df = decay 0.05f.C dt
-        return Expr.max (stock - 100.0f) 0.0f.C * df
-    }
+    let m =
+        model {
+            let dt = (1.0f / 252.0f).C
+            let! z = normal
+            let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
+            let! df = decay 0.05f.C dt
+            return Expr.max (stock - 100.0f) 0.0f.C * df
+        }
+
     let source, _ = Compiler.buildSource m
     Assert.Contains("int indexOffset)", source)
     Assert.Contains("int seed = idx + indexOffset;", source)
 
 [<Fact>]
 let ``fold with indexOffset 0 matches existing results`` () =
-    let m = model {
-        let dt = (1.0f / 252.0f).C
-        let! z = normal
-        let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
-        let! df = decay 0.05f.C dt
-        return Expr.max (stock - 100.0f) 0.0f.C * df
-    }
+    let m =
+        model {
+            let dt = (1.0f / 252.0f).C
+            let! z = normal
+            let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
+            let! df = decay 0.05f.C dt
+            return Expr.max (stock - 100.0f) 0.0f.C * df
+        }
+
     use sim = Simulation.create CPU 10_000 252
     let results = Simulation.fold sim m
     Assert.Equal(10_000, results.Length)
@@ -70,16 +88,18 @@ let ``fold with indexOffset 0 matches existing results`` () =
 
 [<Fact>]
 let ``foldPinned matches fold`` () =
-    let m = model {
-        let dt = (1.0f / 252.0f).C
-        let! z = normal
-        let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
-        let! df = decay 0.05f.C dt
-        return Expr.max (stock - 100.0f) 0.0f.C * df
-    }
-    use pinnedSim = Simulation.createPinned CPU 10_000 252
+    let m =
+        model {
+            let dt = (1.0f / 252.0f).C
+            let! z = normal
+            let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
+            let! df = decay 0.05f.C dt
+            return Expr.max (stock - 100.0f) 0.0f.C * df
+        }
+
+    use pinnedSim = Simulation.createPinned Emulated 10_000 252
     let pinnedResults = Simulation.fold pinnedSim m
-    use sim = Simulation.create CPU 10_000 252
+    use sim = Simulation.create Emulated 10_000 252
     let regularResults = Simulation.fold sim m
     // Same random seeds → same results
     Assert.Equal(regularResults.Length, pinnedResults.Length)
@@ -124,13 +144,15 @@ let ``Output.writeScan CSV produces correct dimensions`` () =
 let ``Output.Parquet.writeFold creates valid file`` () =
     let values = [| 1.0f; 2.0f; 3.0f |]
     let path = Path.Combine(Path.GetTempPath(), $"cavere_test_{Guid.NewGuid()}.parquet")
+
     try
         Output.Parquet.writeFold path values
         Assert.True(File.Exists(path))
         let fi = FileInfo(path)
         Assert.True(fi.Length > 0L)
     finally
-        if File.Exists(path) then File.Delete(path)
+        if File.Exists(path) then
+            File.Delete(path)
 
 // ═══════════════════════════════════════════════════════════════════
 // Multi-Device Config Tests
@@ -138,18 +160,28 @@ let ``Output.Parquet.writeFold creates valid file`` () =
 
 [<Fact>]
 let ``MultiDeviceConfig with 1 device matches single device`` () =
-    let m = model {
-        let dt = (1.0f / 252.0f).C
-        let! z = normal
-        let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
-        let! df = decay 0.05f.C dt
-        return Expr.max (stock - 100.0f) 0.0f.C * df
-    }
-    use sim = Simulation.create CPU 10_000 252
+    let m =
+        model {
+            let dt = (1.0f / 252.0f).C
+            let! z = normal
+            let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
+            let! df = decay 0.05f.C dt
+            return Expr.max (stock - 100.0f) 0.0f.C * df
+        }
+
+    use sim = Simulation.create Emulated 10_000 252
     let singleResult = Simulation.fold sim m
     let singleMean = Array.average singleResult
 
-    use multiSim = Simulation.createMulti { DeviceType = CPU; DeviceCount = 1 } 10_000 252
+    use multiSim =
+        Simulation.createMulti
+            {
+                DeviceType = Emulated
+                DeviceCount = 1
+            }
+            10_000
+            252
+
     let multiResult = Simulation.fold multiSim m
     let multiMean = Array.average multiResult
 

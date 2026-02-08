@@ -10,9 +10,8 @@
     <Compile Include="Dsl.Expr.fs" />
     <Compile Include="Dsl.Schedule.fs" />
     <Compile Include="Dsl.Model.fs" />
-    <!-- Ast: Expression walkers, simplification, analysis -->
+    <!-- Ast: Expression walkers, simplification -->
     <Compile Include="Ast.Symbolic.fs" />
-    <Compile Include="Ast.Analysis.fs" />
     <!-- Compiler: Code generation pipeline -->
     <Compile Include="Compiler.Common.fs" />
     <Compile Include="Compiler.Codegen.fs" />
@@ -20,6 +19,7 @@
     <Compile Include="Compiler.Batch.fs" />
     <Compile Include="Compiler.Diff.fs" />
     <Compile Include="Compiler.Adjoint.fs" />
+    <Compile Include="Compiler.Cpu.fs" />
     <Compile Include="Compiler.fs" />
     <!-- Sim: Device management, kernel launch, simulation -->
     <Compile Include="Sim.Device.fs" />

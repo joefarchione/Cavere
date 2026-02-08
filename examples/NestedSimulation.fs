@@ -13,13 +13,14 @@ open Cavere.Generators
 let run () =
     let sched = Schedule.constant (1.0f / 252.0f) 252
 
-    let outerModel = model {
-        let! dt = scheduleDt sched
-        let! z = normal
-        let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
-        do! observe "stock" stock
-        return stock
-    }
+    let outerModel =
+        model {
+            let! dt = scheduleDt sched
+            let! z = normal
+            let! stock = gbm z 0.05f.C 0.20f.C 100.0f.C dt
+            do! observe "stock" stock
+            return stock
+        }
 
     let numOuter = 1_000
     use outerSim = Simulation.create CPU numOuter sched.Steps
@@ -27,14 +28,15 @@ let run () =
 
     let outerStocks = Watcher.sliceObs "stock" 0 watch
 
-    let innerModel = model {
-        let! dt = scheduleDt sched
-        let! stock0 = batchInput outerStocks
-        let! z = normal
-        let! stock = gbm z 0.05f.C 0.20f.C stock0 dt
-        let! df = decay 0.05f.C dt
-        return Expr.max (stock - 100.0f) 0.0f.C * df
-    }
+    let innerModel =
+        model {
+            let! dt = scheduleDt sched
+            let! stock0 = batchInput outerStocks
+            let! z = normal
+            let! stock = gbm z 0.05f.C 0.20f.C stock0 dt
+            let! df = decay 0.05f.C dt
+            return Expr.max (stock - 100.0f) 0.0f.C * df
+        }
 
     let numScenarios = 500
     use innerSim = BatchSimulation.create CPU numOuter numScenarios 189

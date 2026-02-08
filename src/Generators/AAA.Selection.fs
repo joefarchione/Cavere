@@ -9,11 +9,7 @@ module Selection =
     // ══════════════════════════════════════════════════════════════════
 
     /// Argsort: return indices that would sort the array.
-    let argsort (arr: float32[]) : int[] =
-        arr
-        |> Array.mapi (fun i v -> (i, v))
-        |> Array.sortBy snd
-        |> Array.map fst
+    let argsort (arr: float32[]) : int[] = arr |> Array.mapi (fun i v -> (i, v)) |> Array.sortBy snd |> Array.map fst
 
     /// Compute percentile value (0.0 to 1.0).
     let percentile (sorted: float32[]) (p: float32) : float32 =
@@ -22,37 +18,58 @@ module Selection =
 
     /// Compute mean of array.
     let mean (arr: float32[]) : float32 =
-        if arr.Length = 0 then 0.0f
-        else Array.sum arr / float32 arr.Length
+        if arr.Length = 0 then
+            0.0f
+        else
+            Array.sum arr / float32 arr.Length
 
     /// Compute variance of array.
     let variance (arr: float32[]) : float32 =
-        if arr.Length < 2 then 0.0f
+        if arr.Length < 2 then
+            0.0f
         else
             let m = mean arr
-            arr |> Array.map (fun x -> (x - m) * (x - m)) |> Array.sum |> fun s -> s / float32 arr.Length
+
+            arr
+            |> Array.map (fun x -> (x - m) * (x - m))
+            |> Array.sum
+            |> fun s -> s / float32 arr.Length
 
     /// Compute skewness of array.
     let skewness (arr: float32[]) : float32 =
-        if arr.Length < 3 then 0.0f
+        if arr.Length < 3 then
+            0.0f
         else
             let m = mean arr
             let v = variance arr
-            if v < 1e-10f then 0.0f
+
+            if v < 1e-10f then
+                0.0f
             else
                 let s = sqrt v
-                arr |> Array.map (fun x -> ((x - m) / s) ** 3.0f) |> Array.sum |> fun sum -> sum / float32 arr.Length
+
+                arr
+                |> Array.map (fun x -> ((x - m) / s) ** 3.0f)
+                |> Array.sum
+                |> fun sum -> sum / float32 arr.Length
 
     /// Compute kurtosis of array (excess kurtosis, normal = 0).
     let kurtosis (arr: float32[]) : float32 =
-        if arr.Length < 4 then 0.0f
+        if arr.Length < 4 then
+            0.0f
         else
             let m = mean arr
             let v = variance arr
-            if v < 1e-10f then 0.0f
+
+            if v < 1e-10f then
+                0.0f
             else
                 let s = sqrt v
-                arr |> Array.map (fun x -> ((x - m) / s) ** 4.0f) |> Array.sum |> fun sum -> sum / float32 arr.Length - 3.0f
+
+                arr
+                |> Array.map (fun x -> ((x - m) / s) ** 4.0f)
+                |> Array.sum
+                |> fun sum -> sum / float32 arr.Length - 3.0f
 
     // ══════════════════════════════════════════════════════════════════
     // Stratified Selection
@@ -68,18 +85,21 @@ module Selection =
 
         // For each bucket, find the range of indices and sample
         let numBuckets = bucketEdges.Length - 1
-        [| for b in 0 .. numBuckets - 1 do
-            let startPct = bucketEdges.[b]
-            let endPct = bucketEdges.[b + 1]
-            let startIdx = int (startPct * float32 n)
-            let endIdx = min n (int (endPct * float32 n))
-            let bucketSize = endIdx - startIdx
 
-            if bucketSize > 0 then
-                // Evenly space selections within bucket
-                let step = max 1 (bucketSize / perBucket)
-                for i in 0 .. min perBucket bucketSize - 1 do
-                    yield sortedIdx.[startIdx + i * step]
+        [|
+            for b in 0 .. numBuckets - 1 do
+                let startPct = bucketEdges.[b]
+                let endPct = bucketEdges.[b + 1]
+                let startIdx = int (startPct * float32 n)
+                let endIdx = min n (int (endPct * float32 n))
+                let bucketSize = endIdx - startIdx
+
+                if bucketSize > 0 then
+                    // Evenly space selections within bucket
+                    let step = max 1 (bucketSize / perBucket)
+
+                    for i in 0 .. min perBucket bucketSize - 1 do
+                        yield sortedIdx.[startIdx + i * step]
         |]
 
     /// Default bucket edges for tail-preserving stratification.
@@ -106,11 +126,16 @@ module Selection =
         let middleStart = worstN
         let middleEnd = n - bestN
         let middleRange = middleEnd - middleStart
+
         let middle =
-            if middleRange <= 0 || middleN <= 0 then [||]
+            if middleRange <= 0 || middleN <= 0 then
+                [||]
             else
                 let step = max 1 (middleRange / middleN)
-                [| for i in 0 .. min middleN middleRange - 1 -> sortedIdx.[middleStart + i * step] |]
+
+                [|
+                    for i in 0 .. min middleN middleRange - 1 -> sortedIdx.[middleStart + i * step]
+                |]
 
         Array.concat [| worst; middle; best |] |> Array.distinct
 
@@ -129,11 +154,16 @@ module Selection =
         // Select evenly from the rest
         let restStart = tailSize
         let restRange = n - tailSize
+
         let rest =
-            if restRange <= 0 || otherCount <= 0 then [||]
+            if restRange <= 0 || otherCount <= 0 then
+                [||]
             else
                 let step = max 1 (restRange / otherCount)
-                [| for i in 0 .. min otherCount restRange - 1 -> sortedIdx.[restStart + i * step] |]
+
+                [|
+                    for i in 0 .. min otherCount restRange - 1 -> sortedIdx.[restStart + i * step]
+                |]
 
         Array.concat [| tail; rest |] |> Array.distinct
 
@@ -147,7 +177,9 @@ module Selection =
     /// Returns indices and optional weights (equal weights for simplicity).
     let momentMatchingSelect (metric: float32[]) (targetCount: int) : int[] =
         let n = metric.Length
-        if targetCount >= n then [| 0 .. n - 1 |]
+
+        if targetCount >= n then
+            [| 0 .. n - 1 |]
         else
             // Target moments from full set
             let targetMean = mean metric
@@ -175,10 +207,12 @@ module Selection =
                     let testMean = mean testVals
                     let testVar = variance testVals
                     let testSkew = skewness testVals
+
                     let error =
-                        abs (testMean - targetMean) / (abs targetMean + 0.001f) +
-                        abs (testVar - targetVar) / (abs targetVar + 0.001f) +
-                        abs (testSkew - targetSkew) / (abs targetSkew + 1.0f)
+                        abs (testMean - targetMean) / (abs targetMean + 0.001f)
+                        + abs (testVar - targetVar) / (abs targetVar + 0.001f)
+                        + abs (testSkew - targetSkew) / (abs targetSkew + 1.0f)
+
                     if error < bestError then
                         bestError <- error
                         bestIdx <- idx
@@ -196,9 +230,7 @@ module Selection =
     /// weights: weights for each metric (should sum to 1)
     let combinedMetric (metrics: float32[][]) (weights: float32[]) : float32[] =
         let n = metrics.[0].Length
-        Array.init n (fun i ->
-            Array.zip metrics weights
-            |> Array.sumBy (fun (m, w) -> w * m.[i]))
+        Array.init n (fun i -> Array.zip metrics weights |> Array.sumBy (fun (m, w) -> w * m.[i]))
 
     /// Multi-metric stratified selection.
     /// Uses combined metric for stratification.
@@ -256,6 +288,9 @@ module Selection =
     let printQuality (q: SelectionQuality) : unit =
         printfn "Selection Quality:"
         printfn $"  Mean:     Full={q.FullMean:F4}  Selected={q.SelectedMean:F4}  Error={q.MeanError * 100.0f:F2}%%"
-        printfn $"  Variance: Full={q.FullVariance:F4}  Selected={q.SelectedVariance:F4}  Error={q.VarianceError * 100.0f:F2}%%"
+
+        printfn
+            $"  Variance: Full={q.FullVariance:F4}  Selected={q.SelectedVariance:F4}  Error={q.VarianceError * 100.0f:F2}%%"
+
         printfn $"  Skewness: Full={q.FullSkewness:F4}  Selected={q.SelectedSkewness:F4}"
         printfn $"  Kurtosis: Full={q.FullKurtosis:F4}  Selected={q.SelectedKurtosis:F4}"

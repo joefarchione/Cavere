@@ -27,18 +27,26 @@ type SimulationServiceImpl() =
     let packWatchResponse (finals: float32[]) (wr: WatchResult) : WatchResponse =
         let resp = WatchResponse()
         resp.Finals.AddRange(finals)
+
         for spec in wr.Observers do
             let data = Watcher.values spec.Name wr
             let od = ObserverData(Name = spec.Name, NumObs = wr.NumObs, NumPaths = wr.NumPaths)
+
             for obs in 0 .. wr.NumObs - 1 do
                 for path in 0 .. wr.NumPaths - 1 do
                     od.Values.Add(data.[obs, path])
+
             resp.Observers.Add(od)
+
         resp
 
     let runFold device deviceCount usePinned numScenarios steps (m: Model) =
         if deviceCount > 1 then
-            let config = { DeviceType = device; DeviceCount = deviceCount }
+            let config = {
+                DeviceType = device
+                DeviceCount = deviceCount
+            }
+
             use sim = Simulation.createMulti config numScenarios steps
             Simulation.fold sim m
         elif usePinned then
@@ -58,7 +66,8 @@ type SimulationServiceImpl() =
             let values = runFold device request.DeviceCount request.UsePinned request.NumScenarios steps m
             let resp = FoldResponse()
             resp.Values.AddRange(values)
-            resp)
+            resp
+        )
 
     override _.FoldWatch(request: WatchRequest, _context: ServerCallContext) =
         Task.FromResult(
@@ -68,7 +77,8 @@ type SimulationServiceImpl() =
             let freq = ModelFactory.mapFrequency request.Frequency
             use sim = Simulation.create device request.NumScenarios steps
             let finals, wr = Simulation.foldWatch sim m freq
-            packWatchResponse finals wr)
+            packWatchResponse finals wr
+        )
 
     override _.Scan(request: SimulationRequest, _context: ServerCallContext) =
         Task.FromResult(
@@ -78,12 +88,17 @@ type SimulationServiceImpl() =
             use sim = Simulation.create device request.NumScenarios steps
             let data = Simulation.scan sim m
             let resp = ScanResponse(Steps = Array2D.length1 data, NumScenarios = Array2D.length2 data)
+
             for i in 0 .. Array2D.length1 data - 1 do
                 for j in 0 .. Array2D.length2 data - 1 do
                     resp.Values.Add(data.[i, j])
-            resp)
 
-    override _.StreamScan(request: SimulationRequest, responseStream: IServerStreamWriter<ScanChunk>, _context: ServerCallContext) =
+            resp
+        )
+
+    override _.StreamScan
+        (request: SimulationRequest, responseStream: IServerStreamWriter<ScanChunk>, _context: ServerCallContext)
+        =
         task {
             let m = ModelFactory.buildModel request.Model
             let steps = ModelFactory.getSteps request.Model
@@ -93,15 +108,19 @@ type SimulationServiceImpl() =
             let totalSteps = Array2D.length1 data
             let numScenarios = Array2D.length2 data
             let mutable startStep = 0
+
             while startStep < totalSteps do
                 let count = min chunkSize (totalSteps - startStep)
                 let chunk = ScanChunk(StartStep = startStep, StepCount = count, NumScenarios = numScenarios)
+
                 for i in startStep .. startStep + count - 1 do
                     for j in 0 .. numScenarios - 1 do
                         chunk.Values.Add(data.[i, j])
+
                 do! responseStream.WriteAsync(chunk)
                 startStep <- startStep + count
-        } :> Task
+        }
+        :> Task
 
     // ── Batch simulation RPCs ─────────────────────────────────────────
 
@@ -111,10 +130,16 @@ type SimulationServiceImpl() =
             let m = ModelFactory.buildBatchModel request.Model batchValues
             let steps = ModelFactory.getSteps request.Model
             let device = ModelFactory.mapDeviceType request.Device
+
             let values =
                 if request.DeviceCount > 1 then
-                    let config = { DeviceType = device; DeviceCount = request.DeviceCount }
+                    let config = {
+                        DeviceType = device
+                        DeviceCount = request.DeviceCount
+                    }
+
                     let deviceSet = Device.createMulti config
+
                     try
                         let kernel = Kernel.compileBatchFor m batchValues.Length
                         Engine.foldBatchMulti deviceSet kernel batchValues.Length request.NumScenarios steps
@@ -123,9 +148,11 @@ type SimulationServiceImpl() =
                 else
                     use sim = BatchSimulation.create device batchValues.Length request.NumScenarios steps
                     BatchSimulation.fold sim m
+
             let resp = FoldResponse()
             resp.Values.AddRange(values)
-            resp)
+            resp
+        )
 
     override _.BatchFoldWatch(request: BatchWatchRequest, _context: ServerCallContext) =
         Task.FromResult(
@@ -136,7 +163,8 @@ type SimulationServiceImpl() =
             let freq = ModelFactory.mapFrequency request.Frequency
             use sim = BatchSimulation.create device batchValues.Length request.NumScenarios steps
             let finals, wr = BatchSimulation.foldWatch sim m freq
-            packWatchResponse finals wr)
+            packWatchResponse finals wr
+        )
 
     override _.BatchFoldMeans(request: BatchRequest, _context: ServerCallContext) =
         Task.FromResult(
@@ -148,9 +176,12 @@ type SimulationServiceImpl() =
             let values = BatchSimulation.foldMeans sim m
             let resp = FoldResponse()
             resp.Values.AddRange(values)
-            resp)
+            resp
+        )
 
-    override _.StreamBatchFold(request: BatchRequest, responseStream: IServerStreamWriter<FoldChunk>, _context: ServerCallContext) =
+    override _.StreamBatchFold
+        (request: BatchRequest, responseStream: IServerStreamWriter<FoldChunk>, _context: ServerCallContext)
+        =
         task {
             let batchValues = request.BatchValues |> Seq.toArray
             let m = ModelFactory.buildBatchModel request.Model batchValues
@@ -159,14 +190,18 @@ type SimulationServiceImpl() =
             use sim = BatchSimulation.create device batchValues.Length request.NumScenarios steps
             let values = BatchSimulation.fold sim m
             let mutable startIdx = 0
+
             while startIdx < values.Length do
                 let count = min chunkSize (values.Length - startIdx)
                 let chunk = FoldChunk(StartIndex = startIdx, Count = count)
+
                 for i in startIdx .. startIdx + count - 1 do
                     chunk.Values.Add(values.[i])
+
                 do! responseStream.WriteAsync(chunk)
                 startIdx <- startIdx + count
-        } :> Task
+        }
+        :> Task
 
     // ── Automatic differentiation RPCs ────────────────────────────────
 
@@ -177,16 +212,18 @@ type SimulationServiceImpl() =
             let device = ModelFactory.mapDeviceType request.Device
             let freq = ModelFactory.mapFrequency request.Frequency
             let mode = ModelFactory.mapDiffMode request.DiffMode
+
             let transformed =
                 match mode with
-                | Cavere.Core.DiffMode.DualMode ->
-                    let m', _ = CompilerDiff.transformDual m in m'
+                | Cavere.Core.DiffMode.DualMode -> let m', _ = CompilerDiff.transformDual m in m'
                 | Cavere.Core.DiffMode.HyperDualMode diagonal ->
                     let m', _ = CompilerDiff.transformHyperDual diagonal m in m'
                 | _ -> failwith "FoldDiff only supports Dual and HyperDual modes. Use FoldAdjoint for Adjoint mode."
+
             use sim = Simulation.create device request.NumScenarios steps
             let finals, wr = Simulation.foldWatch sim transformed freq
-            packWatchResponse finals wr)
+            packWatchResponse finals wr
+        )
 
     override _.FoldAdjoint(request: AdjointRequest, _context: ServerCallContext) =
         Task.FromResult(
@@ -200,10 +237,13 @@ type SimulationServiceImpl() =
             let resp = AdjointResponse(NumScenarios = request.NumScenarios, NumDiffVars = numDiffVars)
             resp.Values.AddRange(values)
             resp.DiffVarIndices.AddRange(diffVars)
+
             for s in 0 .. request.NumScenarios - 1 do
                 for d in 0 .. numDiffVars - 1 do
                     resp.Adjoints.Add(adjoints.[s, d])
-            resp)
+
+            resp
+        )
 
     override _.Recommend(request: ModelSpec, _context: ServerCallContext) =
         Task.FromResult(
@@ -211,13 +251,18 @@ type SimulationServiceImpl() =
             let mode, desc = CompilerDiff.recommend m
             let hasDv = CompilerDiff.hasDiffVars m
             let resp = RecommendResponse(HasDiffVars = hasDv, Description = desc)
+
             match mode with
             | Some Cavere.Core.DiffMode.DualMode -> resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffDual
-            | Some (Cavere.Core.DiffMode.HyperDualMode true) -> resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffHyperdualDiag
-            | Some (Cavere.Core.DiffMode.HyperDualMode false) -> resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffHyperdualFull
+            | Some(Cavere.Core.DiffMode.HyperDualMode true) ->
+                resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffHyperdualDiag
+            | Some(Cavere.Core.DiffMode.HyperDualMode false) ->
+                resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffHyperdualFull
             | Some Cavere.Core.DiffMode.AdjointMode -> resp.RecommendedMode <- Cavere.Grpc.DiffMode.DiffAdjoint
             | _ -> ()
-            resp)
+
+            resp
+        )
 
     // ── Kernel management RPCs ──────────────────────────────────────
 
@@ -225,14 +270,24 @@ type SimulationServiceImpl() =
         Task.FromResult(
             let m = ModelFactory.buildModel request.Model
             let steps = ModelFactory.getSteps request.Model
+
             let kernel, source =
                 if request.Batch then
                     Kernel.compileBatch m, Kernel.sourceBatch m
                 else
                     Kernel.compile m, Kernel.source m
+
             let id = Guid.NewGuid().ToString("N")
-            kernels.[id] <- { Kernel = kernel; Model = m; Steps = steps; IsBatch = request.Batch }
-            KernelResponse(KernelId = id, CsharpSource = source))
+
+            kernels.[id] <- {
+                Kernel = kernel
+                Model = m
+                Steps = steps
+                IsBatch = request.Batch
+            }
+
+            KernelResponse(KernelId = id, CsharpSource = source)
+        )
 
     override _.FoldKernel(request: KernelRunRequest, _context: ServerCallContext) =
         Task.FromResult(
@@ -240,16 +295,23 @@ type SimulationServiceImpl() =
             | false, _ -> failwith $"Kernel not found: {request.KernelId}"
             | true, stored ->
                 let device = ModelFactory.mapDeviceType request.Device
+
                 let values =
                     if request.DeviceCount > 1 then
-                        let config = { DeviceType = device; DeviceCount = request.DeviceCount }
+                        let config = {
+                            DeviceType = device
+                            DeviceCount = request.DeviceCount
+                        }
+
                         let deviceSet = Device.createMulti config
+
                         try
                             Engine.foldMulti deviceSet stored.Kernel request.NumScenarios stored.Steps
                         finally
                             Device.disposeMulti deviceSet
                     elif request.UsePinned then
                         let ctx, accel = Device.create device
+
                         try
                             use pool = new PinnedPool(accel)
                             Engine.foldPinned accel pool stored.Kernel request.NumScenarios stored.Steps 0
@@ -258,14 +320,17 @@ type SimulationServiceImpl() =
                             ctx.Dispose()
                     else
                         let ctx, accel = Device.create device
+
                         try
                             Engine.fold accel stored.Kernel request.NumScenarios stored.Steps 0
                         finally
                             accel.Dispose()
                             ctx.Dispose()
+
                 let resp = FoldResponse()
                 resp.Values.AddRange(values)
-                resp)
+                resp
+        )
 
     override _.FoldWatchKernel(request: KernelWatchRequest, _context: ServerCallContext) =
         Task.FromResult(
@@ -276,7 +341,8 @@ type SimulationServiceImpl() =
                 let freq = ModelFactory.mapFrequency request.Frequency
                 use sim = Simulation.create device request.NumScenarios stored.Steps
                 let finals, wr = Simulation.foldWatchKernel sim stored.Kernel freq
-                packWatchResponse finals wr)
+                packWatchResponse finals wr
+        )
 
     override _.ScanKernel(request: KernelRunRequest, _context: ServerCallContext) =
         Task.FromResult(
@@ -287,15 +353,19 @@ type SimulationServiceImpl() =
                 use sim = Simulation.create device request.NumScenarios stored.Steps
                 let data = Simulation.scanKernel sim stored.Kernel
                 let resp = ScanResponse(Steps = Array2D.length1 data, NumScenarios = Array2D.length2 data)
+
                 for i in 0 .. Array2D.length1 data - 1 do
                     for j in 0 .. Array2D.length2 data - 1 do
                         resp.Values.Add(data.[i, j])
-                resp)
+
+                resp
+        )
 
     override _.DestroyKernel(request: KernelId, _context: ServerCallContext) =
         Task.FromResult(
             kernels.TryRemove(request.Id) |> ignore
-            Empty())
+            Empty()
+        )
 
     // ── Session management ────────────────────────────────────────────
 
@@ -305,14 +375,17 @@ type SimulationServiceImpl() =
             let sim = Simulation.create device request.NumScenarios request.Steps
             let id = Guid.NewGuid().ToString("N")
             sessions.[id] <- sim
-            SessionResponse(Id = id))
+            SessionResponse(Id = id)
+        )
 
     override _.DestroySession(request: SessionId, _context: ServerCallContext) =
         Task.FromResult(
             match sessions.TryRemove(request.Id) with
             | true, sim -> (sim :> IDisposable).Dispose()
             | _ -> ()
-            Empty())
+
+            Empty()
+        )
 
     // ── Utility ───────────────────────────────────────────────────────
 
@@ -320,4 +393,5 @@ type SimulationServiceImpl() =
         Task.FromResult(
             let m = ModelFactory.buildModel request
             let src = Simulation.source m
-            SourceResponse(CsharpSource = src))
+            SourceResponse(CsharpSource = src)
+        )

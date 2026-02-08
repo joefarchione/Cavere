@@ -7,8 +7,8 @@ Domain-agnostic expression DSL, compiler pipeline, and GPU engine. No finance co
 All files use `namespace Cavere.Core`. Files are organized by prefix:
 
 - **Dsl.** — Expression types, schedule, model builder (`Dsl.Expr.fs`, `Dsl.Schedule.fs`, `Dsl.Model.fs`)
-- **Ast.** — Expression walkers, simplification, analysis (`Ast.Symbolic.fs`, `Ast.Analysis.fs`)
-- **Compiler.** — Code generation pipeline (`Compiler.Common.fs`, `Compiler.Codegen.fs`, `Compiler.Regular.fs`, `Compiler.Batch.fs`, `Compiler.Diff.fs`, `Compiler.Adjoint.fs`, `Compiler.fs`)
+- **Ast.** — Expression walkers, simplification (`Ast.Symbolic.fs`)
+- **Compiler.** — Code generation pipeline (`Compiler.Common.fs`, `Compiler.Codegen.fs`, `Compiler.Regular.fs`, `Compiler.Batch.fs`, `Compiler.Diff.fs`, `Compiler.Adjoint.fs`, `Compiler.Cpu.fs`, `Compiler.fs`)
 - **Sim.** — Device management, kernel launch, simulation (`Sim.Device.fs`, `Sim.Transfer.fs`, `Sim.Engine.fs`, `Sim.Watcher.fs`, `Sim.Kernel.fs`, `Sim.Simulation.fs`, `Sim.Output.fs`)
 
 ## Key Types

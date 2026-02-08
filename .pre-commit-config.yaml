@@ -1,0 +1,31 @@
+repos:
+  # F# formatting — Fantomas (system tool, must be installed)
+  - repo: local
+    hooks:
+      - id: fantomas
+        name: Fantomas F# formatting
+        entry: fantomas --check
+        language: system
+        files: '\.fs$'
+        exclude: 'obj/|bin/'
+
+  # Python — ruff (official pre-commit mirror, pinned version)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff-format
+        args: [--check]
+        files: '^caverepy/'
+      - id: ruff
+        files: '^caverepy/'
+
+  # Python type-checking — ty via uv (system tool)
+  - repo: local
+    hooks:
+      - id: ty-typecheck
+        name: ty type-check
+        entry: bash -c 'cd caverepy && uv run ty check'
+        language: system
+        files: '^caverepy/.*\.py$'
+        exclude: '_generated/'
+        pass_filenames: false

@@ -19,7 +19,7 @@ printfn "Call price: %.4f" (Array.average prices)
 ## Why Cavere
 
 - **Composable DSL** — stochastic processes snap together with `let!`. One `model { }` block wires up dependencies, allocates random variables, and registers accumulators automatically.
-- **GPU-compiled** — the expression tree compiles to flat C# via Roslyn, then to GPU kernels through ILGPU. Switch between `CPU` and `GPU` with a single flag.
+- **Multi-target compiled** — the expression tree compiles to flat C# via Roslyn: native `CPU` (Parallel.For), `Emulated` (ILGPU CPU accelerator), or `GPU` (ILGPU CUDA). Switch targets with a single flag.
 - **Automatic differentiation** — mark any parameter as `Dual` or `HyperDual` and get Greeks (delta, gamma, vega) computed alongside prices. Forward, reverse, and symbolic modes included.
 - **Extensible generators** — GBM, Heston, Vasicek, CIR, local vol, multi-asset, and AAA ESG models ship out of the box. Writing a custom generator is just an F# function.
 - **Python interop** — a gRPC server exposes all simulation modes to Python (or any gRPC client) with template and custom expression tree builders.
@@ -107,6 +107,7 @@ let ornsteinUhlenbeck kappa theta sigma x0 dt : ModelCtx -> Expr = fun ctx ->
 | [LocalVol.fs](examples/LocalVol.fs) | Local volatility surface pricing |
 | [CustomGenerator.fs](examples/CustomGenerator.fs) | OU mean-reversion and jump-diffusion |
 | [ForwardRateCurve.fs](examples/ForwardRateCurve.fs) | Term-structure-aware pricing |
+| [CalendarSchedule.fs](examples/CalendarSchedule.fs) | Business day calendar with holidays |
 | [NestedSimulation.fs](examples/NestedSimulation.fs) | Conditional expectations via nested MC |
 | [FixedIndexedAnnuity.fs](examples/FixedIndexedAnnuity.fs) | FIA crediting with batch simulation |
 
@@ -138,10 +139,11 @@ dotnet run --project src/App/App.fsproj         # Run console demo
 
 ## Development
 
-After cloning, enable the pre-commit hooks:
+After cloning, install the pre-commit hooks:
 
 ```bash
-git config core.hooksPath hooks
+pip install pre-commit       # or: pipx install pre-commit
+pre-commit install           # installs hooks into .git/hooks/
 ```
 
 This runs automatically on each commit:

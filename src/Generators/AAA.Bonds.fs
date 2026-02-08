@@ -47,24 +47,24 @@ module Bonds =
     /// Build a single bond fund process.
     /// For money market (duration = 0), just accrue at short rate.
     /// For other funds, use duration/convexity for price sensitivity.
-    let singleBondFund
-        (p: BondFundParams)
-        (treasuryYield: Expr)
-        (yieldChange: Expr)
-        : ModelCtx -> Expr =
+    let singleBondFund (p: BondFundParams) (treasuryYield: Expr) (yieldChange: Expr) : ModelCtx -> Expr =
         fun ctx ->
             if p.Duration = 0.0f then
                 // Money market: simple rate accrual
-                evolve p.B0.C (fun b ->
-                    let monthlyReturn = treasuryYield / 12.0f.C
-                    b * (1.0f.C + monthlyReturn)
-                ) ctx
+                evolve
+                    p.B0.C
+                    (fun b ->
+                        let monthlyReturn = treasuryYield / 12.0f.C
+                        b * (1.0f.C + monthlyReturn))
+                    ctx
             else
                 // Bond fund with duration
-                evolve p.B0.C (fun b ->
-                    let ret = bondReturn treasuryYield yieldChange p.CreditSpread p.Duration p.Convexity
-                    b * (1.0f.C + ret)
-                ) ctx
+                evolve
+                    p.B0.C
+                    (fun b ->
+                        let ret = bondReturn treasuryYield yieldChange p.CreditSpread p.Duration p.Convexity
+                        b * (1.0f.C + ret))
+                    ctx
 
     // ══════════════════════════════════════════════════════════════════
     // Multiple Bond Funds with Yield Curve
@@ -94,8 +94,7 @@ module Bonds =
                 let treasuryYield = (1.0f - weight).C * shortRate + weight.C * longRate
                 let yieldChange = (1.0f - weight).C * shortRateChange + weight.C * longRateChange
 
-                singleBondFund fund treasuryYield yieldChange ctx
-            )
+                singleBondFund fund treasuryYield yieldChange ctx)
             |> Array.ofList
 
     /// Build bond funds using only current rates (approximates rate change from vol).
@@ -121,8 +120,7 @@ module Bonds =
                 // Scale shock by weight (longer bonds affected more)
                 let yieldChange = weight.C * rateShock
 
-                singleBondFund fund treasuryYield yieldChange ctx
-            )
+                singleBondFund fund treasuryYield yieldChange ctx)
             |> Array.ofList
 
     // ══════════════════════════════════════════════════════════════════
@@ -139,10 +137,12 @@ module Bonds =
         (initSpreadBps: float32)
         : ModelCtx -> Expr =
         fun ctx ->
-            evolve initSpreadBps.C (fun spread ->
-                let meanRev = (1.0f - beta).C * spread + beta.C * meanSpreadBps.C
-                meanRev + sigma.C * z
-            ) ctx
+            evolve
+                initSpreadBps.C
+                (fun spread ->
+                    let meanRev = (1.0f - beta).C * spread + beta.C * meanSpreadBps.C
+                    meanRev + sigma.C * z)
+                ctx
 
     /// Bond fund with stochastic credit spread.
     let bondFundWithStochasticSpread
@@ -153,14 +153,18 @@ module Bonds =
         : ModelCtx -> Expr =
         fun ctx ->
             if p.Duration = 0.0f then
-                evolve p.B0.C (fun b ->
-                    let monthlyReturn = treasuryYield / 12.0f.C
-                    b * (1.0f.C + monthlyReturn)
-                ) ctx
+                evolve
+                    p.B0.C
+                    (fun b ->
+                        let monthlyReturn = treasuryYield / 12.0f.C
+                        b * (1.0f.C + monthlyReturn))
+                    ctx
             else
-                evolve p.B0.C (fun b ->
-                    // Total yield change includes spread change
-                    let totalYieldChange = yieldChange + spreadChange
-                    let ret = bondReturn treasuryYield totalYieldChange p.CreditSpread p.Duration p.Convexity
-                    b * (1.0f.C + ret)
-                ) ctx
+                evolve
+                    p.B0.C
+                    (fun b ->
+                        // Total yield change includes spread change
+                        let totalYieldChange = yieldChange + spreadChange
+                        let ret = bondReturn treasuryYield totalYieldChange p.CreditSpread p.Duration p.Convexity
+                        b * (1.0f.C + ret))
+                    ctx

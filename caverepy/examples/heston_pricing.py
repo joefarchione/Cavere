@@ -7,11 +7,11 @@ from cavere import CavereClient, call_payoff, heston
 spec = heston(
     spot=100.0,
     rate=0.05,
-    v0=0.04,       # initial variance (vol = 0.20)
-    kappa=2.0,     # mean reversion speed
-    theta=0.04,    # long-run variance
-    xi=0.3,        # vol of vol
-    rho=-0.7,      # stock-vol correlation
+    v0=0.04,  # initial variance (vol = 0.20)
+    kappa=2.0,  # mean reversion speed
+    theta=0.04,  # long-run variance
+    xi=0.3,  # vol of vol
+    rho=-0.7,  # stock-vol correlation
     steps=252,
     payoff=call_payoff(strike=100.0),
 )

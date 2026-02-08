@@ -28,3 +28,11 @@ module Compiler =
     // ── Adjoint compilation ──
     let buildAdjoint = CompilerAdjoint.build
     let buildAdjointSource = CompilerAdjoint.buildSource
+
+    // ── CPU (native, no ILGPU) compilation ──
+    let buildCpu = CompilerCpu.build
+    let buildCpuSource = CompilerCpu.buildSource
+    let buildBatchCpu = CompilerCpu.buildBatch
+    let buildBatchCpuSource = CompilerCpu.buildBatchSource
+    let buildAdjointCpu = CompilerCpu.buildAdjoint
+    let buildAdjointCpuSource = CompilerCpu.buildAdjointSource

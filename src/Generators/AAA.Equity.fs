@@ -28,16 +28,19 @@ module Equity =
                 let tau = p.VolTau
                 let sigma = p.VolSigma
                 let nu0 = p.Nu0
-                evolve nu0.C (fun nu ->
-                    (1.0f - beta).C * nu + beta.C * tau.C + sigma.C * zVol) ctx
+                evolve nu0.C (fun nu -> (1.0f - beta).C * nu + beta.C * tau.C + sigma.C * zVol) ctx
 
             // Build price process
             let mu = p.Mu
             let s0 = p.S0
-            evolve s0.C (fun s ->
-                let sigma = Expr.exp logVol
-                let drift = mu.C - 0.5f.C * sigma * sigma
-                s * Expr.exp (drift + sigma * zCorr)) ctx
+
+            evolve
+                s0.C
+                (fun s ->
+                    let sigma = Expr.exp logVol
+                    let drift = mu.C - 0.5f.C * sigma * sigma
+                    s * Expr.exp (drift + sigma * zCorr))
+                ctx
 
     // ══════════════════════════════════════════════════════════════════
     // Multiple Correlated Funds
@@ -68,14 +71,22 @@ module Equity =
 
                 // Build log volatility for this fund
                 let logVol =
-                    evolve fund.Nu0.C (fun nu ->
-                        (1.0f - fund.VolBeta).C * nu + fund.VolBeta.C * fund.VolTau.C + fund.VolSigma.C * zVol) ctx
+                    evolve
+                        fund.Nu0.C
+                        (fun nu ->
+                            (1.0f - fund.VolBeta).C * nu
+                            + fund.VolBeta.C * fund.VolTau.C
+                            + fund.VolSigma.C * zVol)
+                        ctx
 
                 // Build price process
-                evolve fund.S0.C (fun s ->
-                    let sigma = Expr.exp logVol
-                    let drift = fund.Mu.C - 0.5f.C * sigma * sigma
-                    s * Expr.exp (drift + sigma * zCorr)) ctx)
+                evolve
+                    fund.S0.C
+                    (fun s ->
+                        let sigma = Expr.exp logVol
+                        let drift = fund.Mu.C - 0.5f.C * sigma * sigma
+                        s * Expr.exp (drift + sigma * zCorr))
+                    ctx)
             |> Array.ofList
 
     // ══════════════════════════════════════════════════════════════════
@@ -83,13 +94,10 @@ module Equity =
     // ══════════════════════════════════════════════════════════════════
 
     /// Compute total return of an equity fund.
-    let totalReturn (fundStart: Expr) (fundEnd: Expr) : Expr =
-        fundEnd / fundStart - 1.0f.C
+    let totalReturn (fundStart: Expr) (fundEnd: Expr) : Expr = fundEnd / fundStart - 1.0f.C
 
     /// Compute log return of an equity fund.
-    let logReturn (fundStart: Expr) (fundEnd: Expr) : Expr =
-        Expr.log fundEnd - Expr.log fundStart
+    let logReturn (fundStart: Expr) (fundEnd: Expr) : Expr = Expr.log fundEnd - Expr.log fundStart
 
     /// Annualized volatility from log volatility.
-    let annualizedVol (logVol: Expr) (monthsPerYear: float32) : Expr =
-        Expr.exp logVol * (sqrt monthsPerYear).C
+    let annualizedVol (logVol: Expr) (monthsPerYear: float32) : Expr = Expr.exp logVol * (sqrt monthsPerYear).C

@@ -50,12 +50,16 @@ module Generator =
 
             // Return discounted portfolio value (equal weighted)
             let totalEquity =
-                if equities.Length = 0 then 0.0f.C
-                else equities |> Array.reduce (+)
+                if equities.Length = 0 then
+                    0.0f.C
+                else
+                    equities |> Array.reduce (+)
 
             let totalBonds =
-                if bonds.Length = 0 then 0.0f.C
-                else bonds |> Array.reduce (+)
+                if bonds.Length = 0 then
+                    0.0f.C
+                else
+                    bonds |> Array.reduce (+)
 
             let numFunds = float32 (equities.Length + bonds.Length)
             return (totalEquity + totalBonds) / numFunds.C * df
@@ -85,8 +89,10 @@ module Generator =
             do! iter 0 funds.Length (fun i -> observe ($"fund_{i}") funds.[i])
 
             return
-                if funds.Length = 0 then 1.0f.C
-                else funds |> Array.reduce (+) |> fun s -> s / float32 funds.Length
+                if funds.Length = 0 then
+                    1.0f.C
+                else
+                    funds |> Array.reduce (+) |> (fun s -> s / float32 funds.Length)
         }
 
     /// Build a simple model with just rates and one equity fund (S&P 500).
@@ -114,36 +120,29 @@ module Generator =
     // ══════════════════════════════════════════════════════════════════
 
     /// Build default AAA model with standard parameters.
-    let buildDefaultModel () : Model =
-        buildScenarioModel defaultParams
+    let buildDefaultModel () : Model = buildScenarioModel defaultParams
 
     /// Build model with custom number of steps (projection months).
-    let buildModelWithSteps (steps: int) : Model =
-        buildScenarioModel { defaultParams with Steps = steps }
+    let buildModelWithSteps (steps: int) : Model = buildScenarioModel { defaultParams with Steps = steps }
 
     // ══════════════════════════════════════════════════════════════════
     // Result Extraction Helpers
     // ══════════════════════════════════════════════════════════════════
 
     /// Extract long rate from scenario results.
-    let extractLongRate (watch: WatchResult) : float32[,] =
-        Watcher.values "longRate" watch
+    let extractLongRate (watch: WatchResult) : float32[,] = Watcher.values "longRate" watch
 
     /// Extract short rate from scenario results.
-    let extractShortRate (watch: WatchResult) : float32[,] =
-        Watcher.values "shortRate" watch
+    let extractShortRate (watch: WatchResult) : float32[,] = Watcher.values "shortRate" watch
 
     /// Extract discount factors from scenario results.
-    let extractDiscountFactors (watch: WatchResult) : float32[,] =
-        Watcher.values "df" watch
+    let extractDiscountFactors (watch: WatchResult) : float32[,] = Watcher.values "df" watch
 
     /// Extract equity fund values from scenario results.
-    let extractEquity (fundIndex: int) (watch: WatchResult) : float32[,] =
-        Watcher.values ($"equity_{fundIndex}") watch
+    let extractEquity (fundIndex: int) (watch: WatchResult) : float32[,] = Watcher.values ($"equity_{fundIndex}") watch
 
     /// Extract bond fund values from scenario results.
-    let extractBond (fundIndex: int) (watch: WatchResult) : float32[,] =
-        Watcher.values ($"bond_{fundIndex}") watch
+    let extractBond (fundIndex: int) (watch: WatchResult) : float32[,] = Watcher.values ($"bond_{fundIndex}") watch
 
     // ══════════════════════════════════════════════════════════════════
     // Statistics Helpers
@@ -155,9 +154,7 @@ module Generator =
         let numScenarios = Array2D.length2 data
 
         Array2D.init numObs pcts.Length (fun t p ->
-            let sorted =
-                [| for s in 0 .. numScenarios - 1 -> data.[t, s] |]
-                |> Array.sort
+            let sorted = [| for s in 0 .. numScenarios - 1 -> data.[t, s] |] |> Array.sort
             let idx = int (pcts.[p] * float32 (numScenarios - 1))
             sorted.[min idx (numScenarios - 1)])
 
@@ -168,8 +165,10 @@ module Generator =
 
         Array.init numObs (fun t ->
             let mutable sum = 0.0f
+
             for s in 0 .. numScenarios - 1 do
                 sum <- sum + data.[t, s]
+
             sum / float32 numScenarios)
 
     /// Compute standard deviation across scenarios at each time point.
@@ -180,7 +179,9 @@ module Generator =
 
         Array.init numObs (fun t ->
             let mutable sumSq = 0.0f
+
             for s in 0 .. numScenarios - 1 do
                 let diff = data.[t, s] - meanVals.[t]
                 sumSq <- sumSq + diff * diff
+
             sqrt (sumSq / float32 numScenarios))

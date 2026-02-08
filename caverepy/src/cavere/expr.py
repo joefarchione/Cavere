@@ -119,9 +119,7 @@ class HyperDual(Expr):
         self.name = name if name is not None else str(index)
 
     def to_proto(self) -> pb.ExprNode:
-        return pb.ExprNode(
-            hyper_dual=pb.HyperDualOp(index=self.index, value=self.value, name=self.name)
-        )
+        return pb.ExprNode(hyper_dual=pb.HyperDualOp(index=self.index, value=self.value, name=self.name))
 
 
 class _BinaryExpr(Expr):
@@ -166,9 +164,7 @@ class _SurfaceAtExpr(Expr):
         self.index = index
 
     def to_proto(self) -> pb.ExprNode:
-        return pb.ExprNode(
-            surface_at=pb.SurfaceAtOp(surface_id=self.surface_id, index=self.index.to_proto())
-        )
+        return pb.ExprNode(surface_at=pb.SurfaceAtOp(surface_id=self.surface_id, index=self.index.to_proto()))
 
 
 # ── Functions ──────────────────────────────────────────────────────────
@@ -244,22 +240,16 @@ class ModelBuilder:
         self._next_accum_id += 1
         ref = AccumRef(accum_id)
         body_expr = body_fn(ref)
-        self._accums.append(
-            pb.AccumDef(id=accum_id, init=_ensure_expr(init).to_proto(), body=body_expr.to_proto())
-        )
+        self._accums.append(pb.AccumDef(id=accum_id, init=_ensure_expr(init).to_proto(), body=body_expr.to_proto()))
         return ref
 
     def add_surface_1d(self, values: list[float], steps: int) -> int:
         sid = self._next_surface_id
         self._next_surface_id += 1
-        self._surfaces.append(
-            pb.SurfaceDef(id=sid, curve_1d=pb.Curve1DData(values=values, steps=steps))
-        )
+        self._surfaces.append(pb.SurfaceDef(id=sid, curve_1d=pb.Curve1DData(values=values, steps=steps)))
         return sid
 
-    def add_surface_2d(
-        self, times: list[float], spots: list[float], vols: list[float], steps: int
-    ) -> int:
+    def add_surface_2d(self, times: list[float], spots: list[float], vols: list[float], steps: int) -> int:
         sid = self._next_surface_id
         self._next_surface_id += 1
         self._surfaces.append(
@@ -270,9 +260,7 @@ class ModelBuilder:
         )
         return sid
 
-    def build(
-        self, result_expr: Expr, normal_count: int, uniform_count: int, steps: int
-    ) -> pb.ModelSpec:
+    def build(self, result_expr: Expr, normal_count: int, uniform_count: int, steps: int) -> pb.ModelSpec:
         custom = pb.CustomModel(
             result=result_expr.to_proto(),
             accums=self._accums,

@@ -7,10 +7,23 @@ This file provides guidance to Claude Code when working with code in this reposi
 ```bash
 dotnet build                                          # Build entire solution
 dotnet test                                           # Run all tests
-dotnet run --project src/Cavere.App/Cavere.App.fsproj # Run console demo
+dotnet run --project src/App/App.fsproj               # Run console demo
 dotnet run --project examples/Examples.fsproj         # Run all examples
 dotnet clean                                          # Clean build artifacts
 ```
+
+## Pre-commit Hooks
+
+```bash
+pip install pre-commit       # or: pipx install pre-commit
+pre-commit install           # installs hooks into .git/hooks/
+pre-commit run --all-files   # verify all hooks pass
+```
+
+Hooks run automatically on `git commit` and check:
+- **Fantomas** — F# formatting (requires `dotnet tool install -g fantomas`)
+- **ruff format** + **ruff lint** — Python formatting and linting (auto-downloaded by pre-commit)
+- **ty** — Python type-checking (requires `uv` installed)
 
 ## Solution Structure
 
@@ -21,13 +34,13 @@ Cavere.sln
 │   ├── Dsl.Schedule.fs        — Time grid construction
 │   ├── Dsl.Model.fs           — Model record, ModelBuilder CE, DSL primitives
 │   ├── Ast.Symbolic.fs        — Expression simplification, symbolic differentiation
-│   ├── Ast.Analysis.fs        — Closed-form detection, path dependence analysis
 │   ├── Compiler.Common.fs     — Surface layout, expression emission, topo sort
 │   ├── Compiler.Codegen.fs    — C# templates, dynamic emitters
 │   ├── Compiler.Regular.fs    — Fold, FoldWatch, Scan kernels
 │   ├── Compiler.Batch.fs      — FoldBatch, FoldBatchWatch kernels
 │   ├── Compiler.Diff.fs       — Forward-mode AD expression transformation
 │   ├── Compiler.Adjoint.fs    — Reverse-mode AD kernel compilation
+│   ├── Compiler.Cpu.fs        — Native CPU compilation (Parallel.For, no ILGPU)
 │   ├── Compiler.fs            — Unified compiler API facade
 │   ├── Sim.Device.fs          — ILGPU Context/Accelerator management
 │   ├── Sim.Transfer.fs        — Pinned memory pool, DMA transfers
@@ -37,6 +50,7 @@ Cavere.sln
 │   ├── Sim.Simulation.fs      — High-level orchestration
 │   └── Sim.Output.fs          — CSV and Parquet export
 ├── src/Generators/        (F#, net8.0)  — Finance-specific model primitives
+│   ├── Calendar.fs        — Business day schedule construction
 │   ├── Common.fs          — decay (discount factor accumulator)
 │   ├── Equity.fs          — gbm, heston, multiAssetHeston
 │   ├── Rates.fs           — vasicek, cir, cirpp, forward curves
@@ -63,11 +77,14 @@ Cavere.sln
 │   ├── Stats.fs
 │   └── Program.fs
 ├── tests/                 (F#, xUnit)  — Test suite
-│   ├── CompilerTests.fs   — CE allocation, topo sort, Roslyn
+│   ├── CompilerTests.fs   — CE allocation, topo sort, Roslyn, CPU compilation
+│   ├── DiffTests.fs       — Forward/reverse AD, dual/hyper-dual transforms
+│   ├── MemoryTests.fs     — Pinned memory, multi-device transfers
 │   ├── PricingTests.fs    — BS analytical comparison
 │   ├── RatesTests.fs      — Rate model validation
 │   ├── NestedSimTests.fs  — Nested simulation patterns
-│   └── ScheduleTests.fs   — Schedule construction
+│   ├── ScheduleTests.fs   — Schedule construction
+│   └── SymbolicTests.fs   — Expression simplification, condition combinators
 └── examples/              (F#, exe)  — Runnable examples
     ├── EuropeanCall.fs, LocalVol.fs, HestonModel.fs
     ├── CustomGenerator.fs, ForwardRateCurve.fs
@@ -79,15 +96,19 @@ Cavere.sln
 
 ## Architecture
 
-Expr DSL + code generation. Models are expression trees (`Expr` DU), compiled to flat C# via Roslyn, loaded into ILGPU as GPU kernels.
+Expr DSL + code generation. Models are expression trees (`Expr` DU), compiled to flat C# via Roslyn, then dispatched based on `DeviceType`:
 
 ```
-F# model { } CE  →  Expr AST  →  C# source  →  Roslyn  →  ILGPU  →  PTX
+F# model { } CE  →  Expr AST  →  C# source  →  Roslyn  →  ILGPU  →  PTX        (GPU)
+                                                        →  ILGPU CPU accel       (Emulated)
+                                                        →  Parallel.For          (CPU)
 ```
+
+`DeviceType`: `CPU` (native Parallel.For, no ILGPU), `GPU` (ILGPU CUDA), `Emulated` (ILGPU CPU accelerator)
 
 ### Core Abstractions
 
-- **`Expr`** — DU: Const, TimeIndex, Normal(id), Uniform(id), AccumRef(id), Lookup1D, BatchRef, Interp1D, Interp2D, arithmetic/comparison/unary ops
+- **`Expr`** — DU: Const, TimeIndex, Normal(id), Uniform(id), AccumRef(id), Lookup1D, BatchRef, Interp1D, Interp2D, arithmetic/comparison/unary/logical (And, Or, Not) ops
 - **`Model`** — Record: Result expr, accumulators, surfaces, observers, counts
 - **`ModelBuilder`** — Computation expression builder (`model { }` CE)
 - **`evolve init body`** — Accumulator (like Seq.scan), returns AccumRef
