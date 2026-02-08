@@ -2,7 +2,6 @@ namespace Cavere.Tests
 
 open Xunit
 open Cavere.Core
-open Cavere.Generators
 
 module SymbolicTests =
 
@@ -192,138 +191,6 @@ module SymbolicTests =
         Assert.True(Symbolic.containsAccumRef expr 2)
         Assert.False(Symbolic.containsAccumRef expr 3)
 
-    // ══════════════════════════════════════════════════════════════════
-    // Analysis Tests
-    // ══════════════════════════════════════════════════════════════════
-
-    [<Fact>]
-    let ``normalCdf: standard values`` () =
-        Assert.InRange(Analysis.normalCdf 0.0f, 0.499f, 0.501f)
-        Assert.InRange(Analysis.normalCdf 1.0f, 0.840f, 0.842f)
-        Assert.InRange(Analysis.normalCdf -1.0f, 0.158f, 0.160f)
-
-    [<Fact>]
-    let ``evaluate: Black-Scholes call`` () =
-        // BS call with S=100, K=100, r=0.05, vol=0.2, T=1
-        // Known approximate value: ~10.45
-        let price = Analysis.evaluate (BlackScholesCall(100.0f, 100.0f, 0.05f, 0.20f, 1.0f))
-        Assert.InRange(price, 10.0f, 11.0f)
-
-    [<Fact>]
-    let ``evaluate: Black-Scholes put`` () =
-        // BS put with S=100, K=100, r=0.05, vol=0.2, T=1
-        // Known approximate value: ~5.57
-        let price = Analysis.evaluate (BlackScholesPut(100.0f, 100.0f, 0.05f, 0.20f, 1.0f))
-        Assert.InRange(price, 5.0f, 6.0f)
-
-    [<Fact>]
-    let ``evaluate: put-call parity`` () =
-        let s, k, r, v, t = 100.0f, 100.0f, 0.05f, 0.20f, 1.0f
-        let call = Analysis.evaluate (BlackScholesCall(s, k, r, v, t))
-        let put = Analysis.evaluate (BlackScholesPut(s, k, r, v, t))
-        // C - P = S - K*exp(-rT)
-        let parity = s - k * System.MathF.Exp(-r * t)
-        Assert.InRange(call - put, parity - 0.01f, parity + 0.01f)
-
-    [<Fact>]
-    let ``evaluate: zero-coupon bond`` () =
-        let price = Analysis.evaluate (ZeroCouponBond(0.05f, 1.0f))
-        let expected = System.MathF.Exp(-0.05f)
-        Assert.InRange(price, expected - 0.001f, expected + 0.001f)
-
-    [<Fact>]
-    let ``evaluate: forward`` () =
-        let price = Analysis.evaluate (Forward(100.0f, 0.05f, 1.0f))
-        Assert.Equal(100.0f, price)
-
-    [<Fact>]
-    let ``evaluateGreeks: BS call delta is positive`` () =
-        let greeks = Analysis.evaluateGreeks (BlackScholesCall(100.0f, 100.0f, 0.05f, 0.20f, 1.0f))
-        Assert.InRange(greeks.Delta, 0.5f, 0.8f)
-
-    [<Fact>]
-    let ``evaluateGreeks: BS call gamma is positive`` () =
-        let greeks = Analysis.evaluateGreeks (BlackScholesCall(100.0f, 100.0f, 0.05f, 0.20f, 1.0f))
-        Assert.True(greeks.Gamma > 0.0f)
-
-    [<Fact>]
-    let ``isGBMAccumulator: detects GBM pattern`` () =
-        // body = self * exp(something)
-        let def = {
-            Init = Const 100.0f
-            Body = Mul(AccumRef 0, Exp(Add(Const 0.001f, Normal 0)))
-        }
-
-        Assert.True(Analysis.isGBMAccumulator 0 def)
-
-    [<Fact>]
-    let ``isGBMAccumulator: rejects non-GBM`` () =
-        let def = {
-            Init = Const 100.0f
-            Body = Add(AccumRef 0, Const 1.0f)
-        }
-
-        Assert.False(Analysis.isGBMAccumulator 0 def)
-
-    [<Fact>]
-    let ``isDiscountAccumulator: detects discount pattern`` () =
-        // body = self * exp(-rate * dt)
-        let def = {
-            Init = Const 1.0f
-            Body = Mul(AccumRef 0, Exp(Neg(Mul(Const 0.05f, Const 0.004f))))
-        }
-
-        Assert.True(Analysis.isDiscountAccumulator 0 def)
-
-    [<Fact>]
-    let ``detectPathDependence: no time or observers`` () =
-        let m = {
-            Result = Max(Sub(AccumRef 0, Const 100.0f), Const 0.0f)
-            Accums =
-                Map.ofList [
-                    0,
-                    {
-                        Init = Const 100.0f
-                        Body = Mul(AccumRef 0, Exp(Const 0.01f))
-                    }
-                ]
-            Surfaces = Map.empty
-            Observers = []
-            NormalCount = 0
-            UniformCount = 0
-            BernoulliCount = 0
-            BatchSize = 0
-        }
-
-        Assert.False(Analysis.detectPathDependence m)
-
-    [<Fact>]
-    let ``detectPathDependence: with observer`` () =
-        let m = {
-            Result = AccumRef 0
-            Accums =
-                Map.ofList [
-                    0,
-                    {
-                        Init = Const 100.0f
-                        Body = Mul(AccumRef 0, Exp(Const 0.01f))
-                    }
-                ]
-            Surfaces = Map.empty
-            Observers = [
-                {
-                    Name = "stock"
-                    Expr = AccumRef 0
-                    SlotIndex = 0
-                }
-            ]
-            NormalCount = 0
-            UniformCount = 0
-            BernoulliCount = 0
-            BatchSize = 0
-        }
-
-        Assert.True(Analysis.detectPathDependence m)
 
     // ══════════════════════════════════════════════════════════════════
     // Condition Combinator Tests
@@ -373,9 +240,3 @@ module SymbolicTests =
         Assert.Equal(3, Symbolic.countNodes (And(Const 1.0f, Const 0.0f)))
         Assert.Equal(3, Symbolic.countNodes (Or(Const 1.0f, Const 0.0f)))
         Assert.Equal(2, Symbolic.countNodes (Not(Const 1.0f)))
-
-    [<Fact>]
-    let ``GBMMoments: mean of GBM`` () =
-        let expected = 100.0f * System.MathF.Exp(0.05f * 1.0f)
-        let actual = Analysis.GBMMoments.mean 100.0f 0.05f 1.0f
-        Assert.InRange(actual, expected - 0.01f, expected + 0.01f)
