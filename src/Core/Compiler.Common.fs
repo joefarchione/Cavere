@@ -29,6 +29,7 @@ module CompilerCommon =
         for kv in model.Surfaces |> Map.toSeq do
             let id, surf = kv
             offsets <- offsets |> Map.add id offset
+
             match surf with
             | Curve1D(values, steps) ->
                 meta <- meta |> Map.add id (Curve1DMeta(offset, values.Length, steps))
@@ -40,19 +41,26 @@ module CompilerCommon =
                 offset <- offset + timeAxis.Length
                 let spotOff = offset
                 offset <- offset + spotAxis.Length
-                meta <- meta |> Map.add id
-                    (Grid2DMeta(valOff, timeOff, timeAxis.Length, spotOff, spotAxis.Length, steps))
 
-        { Offsets = offsets; TotalSize = offset; Meta = meta }
+                meta <-
+                    meta
+                    |> Map.add id (Grid2DMeta(valOff, timeOff, timeAxis.Length, spotOff, spotAxis.Length, steps))
+
+        {
+            Offsets = offsets
+            TotalSize = offset
+            Meta = meta
+        }
 
     let packSurfaces (model: Model) (layout: SurfaceLayout) : float32[] =
         let arr = Array.zeroCreate<float32> (max 1 layout.TotalSize)
+
         for kv in model.Surfaces |> Map.toSeq do
             let id, surf = kv
             let off = layout.Offsets.[id]
+
             match surf with
-            | Curve1D(values, _) ->
-                Array.Copy(values, 0, arr, off, values.Length)
+            | Curve1D(values, _) -> Array.Copy(values, 0, arr, off, values.Length)
             | Grid2D(values, timeAxis, spotAxis, _) ->
                 let mutable pos = off
                 Array.Copy(values, 0, arr, pos, values.Length)
@@ -60,15 +68,42 @@ module CompilerCommon =
                 Array.Copy(timeAxis, 0, arr, pos, timeAxis.Length)
                 pos <- pos + timeAxis.Length
                 Array.Copy(spotAxis, 0, arr, pos, spotAxis.Length)
+
         arr
 
     // ══════════════════════════════════════════════════════════════════
     // Expression Emission
     // ══════════════════════════════════════════════════════════════════
 
-    let rec emitExpr (layout: SurfaceLayout) (expr: Expr) : string =
+    /// Emit a boolean-typed sub-expression directly as a C# bool (no float encoding).
+    let rec private emitBoolExpr (layout: SurfaceLayout) (expr: Expr) : string =
         match expr with
-        | Const v | Dual(_, v, _) | HyperDual(_, v, _) ->
+        | Gt(a, b) -> sprintf "(%s > %s)" (emitExpr layout a) (emitExpr layout b)
+        | Gte(a, b) -> sprintf "(%s >= %s)" (emitExpr layout a) (emitExpr layout b)
+        | Lt(a, b) -> sprintf "(%s < %s)" (emitExpr layout a) (emitExpr layout b)
+        | Lte(a, b) -> sprintf "(%s <= %s)" (emitExpr layout a) (emitExpr layout b)
+        | And(a, b) -> sprintf "(%s && %s)" (emitBoolExpr layout a) (emitBoolExpr layout b)
+        | Or(a, b) -> sprintf "(%s || %s)" (emitBoolExpr layout a) (emitBoolExpr layout b)
+        | Not a -> sprintf "(!%s)" (emitBoolExpr layout a)
+        | _ -> sprintf "(%s > 0.5f)" (emitExpr layout expr)
+
+    /// Returns true if the expression has boolean semantics (comparison, And, Or, Not).
+    and private isBoolExpr (expr: Expr) : bool =
+        match expr with
+        | Gt _
+        | Gte _
+        | Lt _
+        | Lte _
+        | And _
+        | Or _
+        | Not _ -> true
+        | _ -> false
+
+    and emitExpr (layout: SurfaceLayout) (expr: Expr) : string =
+        match expr with
+        | Const v
+        | Dual(_, v, _)
+        | HyperDual(_, v, _) ->
             if Single.IsInfinity(v) || Single.IsNaN(v) then
                 sprintf "%.8ef" v
             else
@@ -84,11 +119,14 @@ module CompilerCommon =
         | Div(a, b) -> sprintf "(%s / %s)" (emitExpr layout a) (emitExpr layout b)
         | Max(a, b) -> sprintf "MathF.Max(%s, %s)" (emitExpr layout a) (emitExpr layout b)
         | Min(a, b) -> sprintf "MathF.Min(%s, %s)" (emitExpr layout a) (emitExpr layout b)
-        | Gt(a, b) -> sprintf "((%s > %s) ? 1.0f : 0.0f)" (emitExpr layout a) (emitExpr layout b)
-        | Gte(a, b) -> sprintf "((%s >= %s) ? 1.0f : 0.0f)" (emitExpr layout a) (emitExpr layout b)
-        | Lt(a, b) -> sprintf "((%s < %s) ? 1.0f : 0.0f)" (emitExpr layout a) (emitExpr layout b)
-        | Lte(a, b) -> sprintf "((%s <= %s) ? 1.0f : 0.0f)" (emitExpr layout a) (emitExpr layout b)
-        | Select(c, t, f) -> sprintf "((%s > 0.5f) ? %s : %s)" (emitExpr layout c) (emitExpr layout t) (emitExpr layout f)
+        | Gt(a, b) -> sprintf "(%s ? 1.0f : 0.0f)" (emitBoolExpr layout expr)
+        | Gte(a, b) -> sprintf "(%s ? 1.0f : 0.0f)" (emitBoolExpr layout expr)
+        | Lt(a, b) -> sprintf "(%s ? 1.0f : 0.0f)" (emitBoolExpr layout expr)
+        | Lte(a, b) -> sprintf "(%s ? 1.0f : 0.0f)" (emitBoolExpr layout expr)
+        | And(a, b) -> sprintf "(%s ? 1.0f : 0.0f)" (emitBoolExpr layout expr)
+        | Or(a, b) -> sprintf "(%s ? 1.0f : 0.0f)" (emitBoolExpr layout expr)
+        | Not a -> sprintf "(%s ? 1.0f : 0.0f)" (emitBoolExpr layout expr)
+        | Select(c, t, f) -> sprintf "(%s ? %s : %s)" (emitBoolExpr layout c) (emitExpr layout t) (emitExpr layout f)
         | Neg a -> sprintf "(-%s)" (emitExpr layout a)
         | Exp a -> sprintf "MathF.Exp(%s)" (emitExpr layout a)
         | Log a -> sprintf "MathF.Log(%s)" (emitExpr layout a)
@@ -96,8 +134,7 @@ module CompilerCommon =
         | Abs a -> sprintf "MathF.Abs(%s)" (emitExpr layout a)
         | Lookup1D sid ->
             match layout.Meta.[sid] with
-            | Curve1DMeta(offset, _, _) ->
-                sprintf "surfaces[%d + t]" offset
+            | Curve1DMeta(offset, _, _) -> sprintf "surfaces[%d + t]" offset
             | _ -> failwith "Surface type mismatch: expected Curve1D for Lookup1D"
         | Floor a -> sprintf "MathF.Floor(%s)" (emitExpr layout a)
         | SurfaceAt(sid, idx) ->
@@ -105,8 +142,7 @@ module CompilerCommon =
             sprintf "surfaces[%d + (int)(%s)]" baseOffset (emitExpr layout idx)
         | BatchRef sid ->
             match layout.Meta.[sid] with
-            | Curve1DMeta(offset, _, _) ->
-                sprintf "surfaces[%d + batchIdx]" offset
+            | Curve1DMeta(offset, _, _) -> sprintf "surfaces[%d + batchIdx]" offset
             | _ -> failwith "Surface type mismatch: expected Curve1D for BatchRef"
         | BinSearch(sid, axisOff, axisCnt, value) ->
             let baseOffset = layout.Offsets.[sid]
@@ -118,16 +154,40 @@ module CompilerCommon =
 
     let rec collectAccumRefs (expr: Expr) : Set<int> =
         match expr with
-        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> Set.empty
+        | Const _
+        | TimeIndex
+        | Normal _
+        | Uniform _
+        | Bernoulli _
+        | Lookup1D _
+        | BatchRef _
+        | Dual _
+        | HyperDual _ -> Set.empty
         | AccumRef id -> Set.singleton id
         | Floor a -> collectAccumRefs a
         | SurfaceAt(_, idx) -> collectAccumRefs idx
-        | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b) | Max(a, b) | Min(a, b)
-        | Gt(a, b) | Gte(a, b) | Lt(a, b) | Lte(a, b) ->
-            Set.union (collectAccumRefs a) (collectAccumRefs b)
+        | Add(a, b)
+        | Sub(a, b)
+        | Mul(a, b)
+        | Div(a, b)
+        | Max(a, b)
+        | Min(a, b)
+        | Gt(a, b)
+        | Gte(a, b)
+        | Lt(a, b)
+        | Lte(a, b)
+        | And(a, b)
+        | Or(a, b) -> Set.union (collectAccumRefs a) (collectAccumRefs b)
         | Select(c, t, f) ->
-            collectAccumRefs c |> Set.union (collectAccumRefs t) |> Set.union (collectAccumRefs f)
-        | Neg a | Exp a | Log a | Sqrt a | Abs a -> collectAccumRefs a
+            collectAccumRefs c
+            |> Set.union (collectAccumRefs t)
+            |> Set.union (collectAccumRefs f)
+        | Neg a
+        | Exp a
+        | Log a
+        | Sqrt a
+        | Abs a
+        | Not a -> collectAccumRefs a
         | BinSearch(_, _, _, v) -> collectAccumRefs v
 
     // ══════════════════════════════════════════════════════════════════
@@ -136,25 +196,51 @@ module CompilerCommon =
 
     let rec collectSurfaceIds (expr: Expr) : Set<int> =
         match expr with
-        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | Dual _ | HyperDual _ -> Set.empty
-        | Lookup1D sid | BatchRef sid -> Set.singleton sid
+        | Const _
+        | TimeIndex
+        | Normal _
+        | Uniform _
+        | Bernoulli _
+        | AccumRef _
+        | Dual _
+        | HyperDual _ -> Set.empty
+        | Lookup1D sid
+        | BatchRef sid -> Set.singleton sid
         | SurfaceAt(sid, idx) -> collectSurfaceIds idx |> Set.add sid
-        | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> collectSurfaceIds a
-        | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b) | Max(a, b) | Min(a, b)
-        | Gt(a, b) | Gte(a, b) | Lt(a, b) | Lte(a, b) ->
-            Set.union (collectSurfaceIds a) (collectSurfaceIds b)
+        | Floor a
+        | Neg a
+        | Exp a
+        | Log a
+        | Sqrt a
+        | Abs a
+        | Not a -> collectSurfaceIds a
+        | Add(a, b)
+        | Sub(a, b)
+        | Mul(a, b)
+        | Div(a, b)
+        | Max(a, b)
+        | Min(a, b)
+        | Gt(a, b)
+        | Gte(a, b)
+        | Lt(a, b)
+        | Lte(a, b)
+        | And(a, b)
+        | Or(a, b) -> Set.union (collectSurfaceIds a) (collectSurfaceIds b)
         | Select(c, t, f) ->
-            collectSurfaceIds c |> Set.union (collectSurfaceIds t) |> Set.union (collectSurfaceIds f)
+            collectSurfaceIds c
+            |> Set.union (collectSurfaceIds t)
+            |> Set.union (collectSurfaceIds f)
         | BinSearch(sid, _, _, v) -> collectSurfaceIds v |> Set.add sid
 
-    let private collectAllExprs (model: Model) : Expr list =
-        [ yield model.Result
-          for kv in model.Accums |> Map.toSeq do
-              let _, def = kv
-              yield def.Init
-              yield def.Body
-          for obs in model.Observers do
-              yield obs.Expr ]
+    let private collectAllExprs (model: Model) : Expr list = [
+        yield model.Result
+        for kv in model.Accums |> Map.toSeq do
+            let _, def = kv
+            yield def.Init
+            yield def.Body
+        for obs in model.Observers do
+            yield obs.Expr
+    ]
 
     // ══════════════════════════════════════════════════════════════════
     // Model Validation
@@ -171,8 +257,10 @@ module CompilerCommon =
         let missingAccums = Set.difference referencedAccums registeredAccums
 
         let errors = ResizeArray<string>()
+
         if not (Set.isEmpty missingSurfaces) then
             errors.Add $"Surface IDs referenced but not registered: {missingSurfaces |> Set.toList}"
+
         if not (Set.isEmpty missingAccums) then
             errors.Add $"AccumRef IDs referenced but not registered: {missingAccums |> Set.toList}"
 
@@ -181,21 +269,30 @@ module CompilerCommon =
 
     let sortAccums (accums: Map<int, AccumDef>) : (int * AccumDef) list =
         let deps =
-            accums |> Map.map (fun id def ->
+            accums
+            |> Map.map (fun id def ->
                 let bodyRefs = collectAccumRefs def.Body
                 bodyRefs |> Set.remove id)
+
         let mutable visited = Set.empty
         let mutable order = []
+
         let rec visit id =
-            if visited |> Set.contains id then ()
+            if visited |> Set.contains id then
+                ()
             else
                 visited <- visited |> Set.add id
+
                 match deps |> Map.tryFind id with
                 | Some depSet ->
                     for dep in depSet do
-                        if accums |> Map.containsKey dep then visit dep
+                        if accums |> Map.containsKey dep then
+                            visit dep
                 | None -> ()
+
                 order <- (id, accums.[id]) :: order
+
         for id in accums |> Map.toSeq |> Seq.map fst do
             visit id
+
         List.rev order

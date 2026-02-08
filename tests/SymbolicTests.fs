@@ -248,39 +248,130 @@ module SymbolicTests =
     [<Fact>]
     let ``isGBMAccumulator: detects GBM pattern`` () =
         // body = self * exp(something)
-        let def = { Init = Const 100.0f; Body = Mul(AccumRef 0, Exp(Add(Const 0.001f, Normal 0))) }
+        let def = {
+            Init = Const 100.0f
+            Body = Mul(AccumRef 0, Exp(Add(Const 0.001f, Normal 0)))
+        }
+
         Assert.True(Analysis.isGBMAccumulator 0 def)
 
     [<Fact>]
     let ``isGBMAccumulator: rejects non-GBM`` () =
-        let def = { Init = Const 100.0f; Body = Add(AccumRef 0, Const 1.0f) }
+        let def = {
+            Init = Const 100.0f
+            Body = Add(AccumRef 0, Const 1.0f)
+        }
+
         Assert.False(Analysis.isGBMAccumulator 0 def)
 
     [<Fact>]
     let ``isDiscountAccumulator: detects discount pattern`` () =
         // body = self * exp(-rate * dt)
-        let def = { Init = Const 1.0f; Body = Mul(AccumRef 0, Exp(Neg(Mul(Const 0.05f, Const 0.004f)))) }
+        let def = {
+            Init = Const 1.0f
+            Body = Mul(AccumRef 0, Exp(Neg(Mul(Const 0.05f, Const 0.004f))))
+        }
+
         Assert.True(Analysis.isDiscountAccumulator 0 def)
 
     [<Fact>]
     let ``detectPathDependence: no time or observers`` () =
         let m = {
             Result = Max(Sub(AccumRef 0, Const 100.0f), Const 0.0f)
-            Accums = Map.ofList [0, { Init = Const 100.0f; Body = Mul(AccumRef 0, Exp(Const 0.01f)) }]
-            Surfaces = Map.empty; Observers = []; NormalCount = 0; UniformCount = 0; BernoulliCount = 0; BatchSize = 0
+            Accums =
+                Map.ofList [
+                    0,
+                    {
+                        Init = Const 100.0f
+                        Body = Mul(AccumRef 0, Exp(Const 0.01f))
+                    }
+                ]
+            Surfaces = Map.empty
+            Observers = []
+            NormalCount = 0
+            UniformCount = 0
+            BernoulliCount = 0
+            BatchSize = 0
         }
+
         Assert.False(Analysis.detectPathDependence m)
 
     [<Fact>]
     let ``detectPathDependence: with observer`` () =
         let m = {
             Result = AccumRef 0
-            Accums = Map.ofList [0, { Init = Const 100.0f; Body = Mul(AccumRef 0, Exp(Const 0.01f)) }]
+            Accums =
+                Map.ofList [
+                    0,
+                    {
+                        Init = Const 100.0f
+                        Body = Mul(AccumRef 0, Exp(Const 0.01f))
+                    }
+                ]
             Surfaces = Map.empty
-            Observers = [{ Name = "stock"; Expr = AccumRef 0; SlotIndex = 0 }]
-            NormalCount = 0; UniformCount = 0; BernoulliCount = 0; BatchSize = 0
+            Observers = [
+                {
+                    Name = "stock"
+                    Expr = AccumRef 0
+                    SlotIndex = 0
+                }
+            ]
+            NormalCount = 0
+            UniformCount = 0
+            BernoulliCount = 0
+            BatchSize = 0
         }
+
         Assert.True(Analysis.detectPathDependence m)
+
+    // ══════════════════════════════════════════════════════════════════
+    // Condition Combinator Tests
+    // ══════════════════════════════════════════════════════════════════
+
+    [<Fact>]
+    let ``simplify: And with constant true`` () =
+        let expr = And(Const 1.0f, Normal 0)
+        Assert.Equal(Normal 0, Symbolic.simplify expr)
+
+    [<Fact>]
+    let ``simplify: And with constant false`` () =
+        let expr = And(Const 0.0f, Normal 0)
+        Assert.Equal(Const 0.0f, Symbolic.simplify expr)
+
+    [<Fact>]
+    let ``simplify: Or with constant true`` () =
+        let expr = Or(Const 1.0f, Normal 0)
+        Assert.Equal(Const 1.0f, Symbolic.simplify expr)
+
+    [<Fact>]
+    let ``simplify: Or with constant false`` () =
+        let expr = Or(Const 0.0f, Normal 0)
+        Assert.Equal(Normal 0, Symbolic.simplify expr)
+
+    [<Fact>]
+    let ``simplify: Not of Not is identity`` () =
+        let expr = Not(Not(Normal 0))
+        Assert.Equal(Normal 0, Symbolic.simplify expr)
+
+    [<Fact>]
+    let ``simplify: Not of constant`` () =
+        Assert.Equal(Const 0.0f, Symbolic.simplify (Not(Const 1.0f)))
+        Assert.Equal(Const 1.0f, Symbolic.simplify (Not(Const 0.0f)))
+
+    [<Fact>]
+    let ``diff: And/Or/Not have zero derivative`` () =
+        let and' = And(Gt(Normal 0, Const 0.0f), Lt(Normal 1, Const 1.0f))
+        Assert.Equal(Const 0.0f, Symbolic.diff and' 0)
+        let or' = Or(Gt(Normal 0, Const 0.0f), Lt(Normal 1, Const 1.0f))
+        Assert.Equal(Const 0.0f, Symbolic.diff or' 0)
+        let not' = Not(Gt(Normal 0, Const 0.0f))
+        Assert.Equal(Const 0.0f, Symbolic.diff not' 0)
+
+    [<Fact>]
+    let ``countNodes: And is binary, Not is unary`` () =
+        Assert.Equal(3, Symbolic.countNodes (And(Const 1.0f, Const 0.0f)))
+        Assert.Equal(3, Symbolic.countNodes (Or(Const 1.0f, Const 0.0f)))
+        Assert.Equal(2, Symbolic.countNodes (Not(Const 1.0f)))
 
     [<Fact>]
     let ``GBMMoments: mean of GBM`` () =
