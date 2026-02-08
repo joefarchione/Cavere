@@ -5,6 +5,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Calendar.fs" />
+    <Compile Include="Analysis.fs" />
     <Compile Include="Common.fs" />
     <Compile Include="Equity.fs" />
     <Compile Include="Rates.fs" />

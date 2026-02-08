@@ -1,6 +1,7 @@
-namespace Cavere.Core
+namespace Cavere.Generators
 
 open System
+open Cavere.Core
 
 /// Greeks (sensitivities) for a financial model.
 type Greeks = {
@@ -41,11 +42,14 @@ module Analysis =
         let sign = if x < 0.0f then -1.0f else 1.0f
         let x' = abs x / MathF.Sqrt(2.0f)
         let t = 1.0f / (1.0f + p * x')
-        let y = 1.0f - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * MathF.Exp(-x' * x')
+
+        let y =
+            1.0f
+            - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * MathF.Exp(-x' * x')
+
         0.5f * (1.0f + sign * y)
 
-    let normalPdf (x: float32) : float32 =
-        MathF.Exp(-0.5f * x * x) / MathF.Sqrt(2.0f * MathF.PI)
+    let normalPdf (x: float32) : float32 = MathF.Exp(-0.5f * x * x) / MathF.Sqrt(2.0f * MathF.PI)
 
     // ══════════════════════════════════════════════════════════════════
     // Closed-Form Evaluation
@@ -62,7 +66,7 @@ module Analysis =
         | BlackScholesPut(s, k, r, sigma, t) ->
             let d1 = (MathF.Log(s / k) + (r + 0.5f * sigma * sigma) * t) / (sigma * MathF.Sqrt(t))
             let d2 = d1 - sigma * MathF.Sqrt(t)
-            k * MathF.Exp(-r * t) * normalCdf(-d2) - s * normalCdf(-d1)
+            k * MathF.Exp(-r * t) * normalCdf (-d2) - s * normalCdf (-d1)
 
         | Forward(s, _, _) -> s
 
@@ -74,30 +78,47 @@ module Analysis =
         | BlackScholesCall(s, k, r, sigma, t) ->
             let d1 = (MathF.Log(s / k) + (r + 0.5f * sigma * sigma) * t) / (sigma * MathF.Sqrt(t))
             let d2 = d1 - sigma * MathF.Sqrt(t)
-            { Delta = normalCdf d1
-              Gamma = normalPdf d1 / (s * sigma * MathF.Sqrt(t))
-              Vega = s * normalPdf d1 * MathF.Sqrt(t)
-              Theta = -(s * normalPdf d1 * sigma) / (2.0f * MathF.Sqrt(t))
-                      - r * k * MathF.Exp(-r * t) * normalCdf d2
-              Rho = k * t * MathF.Exp(-r * t) * normalCdf d2 }
+
+            {
+                Delta = normalCdf d1
+                Gamma = normalPdf d1 / (s * sigma * MathF.Sqrt(t))
+                Vega = s * normalPdf d1 * MathF.Sqrt(t)
+                Theta =
+                    -(s * normalPdf d1 * sigma) / (2.0f * MathF.Sqrt(t))
+                    - r * k * MathF.Exp(-r * t) * normalCdf d2
+                Rho = k * t * MathF.Exp(-r * t) * normalCdf d2
+            }
 
         | BlackScholesPut(s, k, r, sigma, t) ->
             let d1 = (MathF.Log(s / k) + (r + 0.5f * sigma * sigma) * t) / (sigma * MathF.Sqrt(t))
             let d2 = d1 - sigma * MathF.Sqrt(t)
-            { Delta = normalCdf d1 - 1.0f
-              Gamma = normalPdf d1 / (s * sigma * MathF.Sqrt(t))
-              Vega = s * normalPdf d1 * MathF.Sqrt(t)
-              Theta = -(s * normalPdf d1 * sigma) / (2.0f * MathF.Sqrt(t))
-                      + r * k * MathF.Exp(-r * t) * normalCdf(-d2)
-              Rho = -k * t * MathF.Exp(-r * t) * normalCdf(-d2) }
 
-        | Forward(s, r, t) ->
-            { Delta = 1.0f; Gamma = 0.0f; Vega = 0.0f
-              Theta = -r * s; Rho = t * s }
+            {
+                Delta = normalCdf d1 - 1.0f
+                Gamma = normalPdf d1 / (s * sigma * MathF.Sqrt(t))
+                Vega = s * normalPdf d1 * MathF.Sqrt(t)
+                Theta =
+                    -(s * normalPdf d1 * sigma) / (2.0f * MathF.Sqrt(t))
+                    + r * k * MathF.Exp(-r * t) * normalCdf (-d2)
+                Rho = -k * t * MathF.Exp(-r * t) * normalCdf (-d2)
+            }
+
+        | Forward(s, r, t) -> {
+            Delta = 1.0f
+            Gamma = 0.0f
+            Vega = 0.0f
+            Theta = -r * s
+            Rho = t * s
+          }
 
         | ZeroCouponBond(r, t) ->
-            { Delta = 0.0f; Gamma = 0.0f; Vega = 0.0f
-              Theta = r * MathF.Exp(-r * t); Rho = -t * MathF.Exp(-r * t) }
+            {
+                Delta = 0.0f
+                Gamma = 0.0f
+                Vega = 0.0f
+                Theta = r * MathF.Exp(-r * t)
+                Rho = -t * MathF.Exp(-r * t)
+            }
 
     // ══════════════════════════════════════════════════════════════════
     // Accumulator Pattern Detection
@@ -156,6 +177,7 @@ module Analysis =
             | Add(_, Mul(Const v, Mul(Sqrt _, Normal _))) -> Some v
             | Add(_, Mul(Mul(Mul(Const v, Sqrt _), Normal _), _)) -> Some v
             | _ -> None
+
         match def.Body with
         | Mul(AccumRef _, Exp inner) -> findVolFromAdd inner
         | _ -> None
@@ -171,6 +193,7 @@ module Analysis =
                 | Some dt -> Some dt
                 | None -> findDt b
             | _ -> None
+
         match def.Body with
         | Mul(AccumRef _, Exp inner) -> findDt inner
         | _ -> None
@@ -183,9 +206,7 @@ module Analysis =
     let detectPathDependence (model: Model) : bool =
         let usesTimeIdx = Symbolic.containsTimeIndex model.Result
         let usesTimeLookup = Symbolic.containsLookup1D model.Result
-        let hasRunningStats =
-            model.Accums
-            |> Map.exists (fun id def -> isRunningStatistic id def)
+        let hasRunningStats = model.Accums |> Map.exists (fun id def -> isRunningStatistic id def)
         let hasObservations = not model.Observers.IsEmpty
         usesTimeIdx || usesTimeLookup || hasRunningStats || hasObservations
 
@@ -204,10 +225,10 @@ module Analysis =
         // ── Pattern 1: European Call — max(S - K, 0) * df ──
         | Mul(Max(Sub(AccumRef sId, Const k), Const 0.0f), AccumRef dfId) ->
             match getAccum sId, getAccum dfId with
-            | Some stockDef, Some dfDef
-                when isGBMAccumulator sId stockDef && isDiscountAccumulator dfId dfDef ->
-                match extractInitialConst stockDef, extractDiscountRate dfDef,
-                      extractGBMVol stockDef, extractDt stockDef with
+            | Some stockDef, Some dfDef when isGBMAccumulator sId stockDef && isDiscountAccumulator dfId dfDef ->
+                match
+                    extractInitialConst stockDef, extractDiscountRate dfDef, extractGBMVol stockDef, extractDt stockDef
+                with
                 | Some spot, Some rate, Some vol, Some dt ->
                     let time = float32 model.Accums.Count * dt * float32 (max 1 (model.Accums.Count - 1))
                     // Use steps from surface data or estimate from dt
@@ -218,6 +239,7 @@ module Analysis =
                             | Curve1D(_, steps) -> Some steps
                             | Grid2D(_, _, _, steps) -> Some steps)
                         |> Option.defaultValue (int (1.0f / dt))
+
                     let time = float32 steps * dt
                     Some(BlackScholesCall(spot, k, rate, vol, time))
                 | _ -> None
@@ -226,10 +248,10 @@ module Analysis =
         // ── Pattern 2: European Put — max(K - S, 0) * df ──
         | Mul(Max(Sub(Const k, AccumRef sId), Const 0.0f), AccumRef dfId) ->
             match getAccum sId, getAccum dfId with
-            | Some stockDef, Some dfDef
-                when isGBMAccumulator sId stockDef && isDiscountAccumulator dfId dfDef ->
-                match extractInitialConst stockDef, extractDiscountRate dfDef,
-                      extractGBMVol stockDef, extractDt stockDef with
+            | Some stockDef, Some dfDef when isGBMAccumulator sId stockDef && isDiscountAccumulator dfId dfDef ->
+                match
+                    extractInitialConst stockDef, extractDiscountRate dfDef, extractGBMVol stockDef, extractDt stockDef
+                with
                 | Some spot, Some rate, Some vol, Some dt ->
                     let steps =
                         model.Surfaces
@@ -238,6 +260,7 @@ module Analysis =
                             | Curve1D(_, steps) -> Some steps
                             | Grid2D(_, _, _, steps) -> Some steps)
                         |> Option.defaultValue (int (1.0f / dt))
+
                     let time = float32 steps * dt
                     Some(BlackScholesPut(spot, k, rate, vol, time))
                 | _ -> None
@@ -246,8 +269,7 @@ module Analysis =
         // ── Pattern 3: Forward — S * df ──
         | Mul(AccumRef sId, AccumRef dfId) ->
             match getAccum sId, getAccum dfId with
-            | Some stockDef, Some dfDef
-                when isGBMAccumulator sId stockDef && isDiscountAccumulator dfId dfDef ->
+            | Some stockDef, Some dfDef when isGBMAccumulator sId stockDef && isDiscountAccumulator dfId dfDef ->
                 match extractInitialConst stockDef, extractDiscountRate dfDef, extractDt stockDef with
                 | Some spot, Some rate, Some dt ->
                     let steps =
@@ -257,6 +279,7 @@ module Analysis =
                             | Curve1D(_, steps) -> Some steps
                             | Grid2D(_, _, _, steps) -> Some steps)
                         |> Option.defaultValue (int (1.0f / dt))
+
                     let time = float32 steps * dt
                     Some(Forward(spot, rate, time))
                 | _ -> None
@@ -275,6 +298,7 @@ module Analysis =
                             | Curve1D(_, steps) -> Some steps
                             | Grid2D(_, _, _, steps) -> Some steps)
                         |> Option.defaultValue (int (1.0f / dt))
+
                     let time = float32 steps * dt
                     Some(ZeroCouponBond(rate, time))
                 | _ -> None
@@ -289,6 +313,7 @@ module Analysis =
     /// Analyze a model and determine the best solution method.
     let analyzeModel (model: Model) : ModelAnalysis =
         let pathDependent = detectPathDependence model
+
         if not pathDependent then
             match matchClosedFormPattern model with
             | Some solution -> ClosedForm solution
@@ -302,8 +327,7 @@ module Analysis =
 
     module GBMMoments =
         /// E[S_T] = S_0 * exp(r * T)
-        let mean (spot: float32) (rate: float32) (time: float32) : float32 =
-            spot * MathF.Exp(rate * time)
+        let mean (spot: float32) (rate: float32) (time: float32) : float32 = spot * MathF.Exp(rate * time)
 
         /// Var[S_T] = S_0^2 * exp(2rT) * (exp(sigma^2 * T) - 1)
         let variance (spot: float32) (rate: float32) (vol: float32) (time: float32) : float32 =

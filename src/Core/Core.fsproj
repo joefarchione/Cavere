@@ -12,7 +12,6 @@
     <Compile Include="Dsl.Model.fs" />
     <!-- Ast: Expression walkers, simplification, analysis -->
     <Compile Include="Ast.Symbolic.fs" />
-    <Compile Include="Ast.Analysis.fs" />
     <!-- Compiler: Code generation pipeline -->
     <Compile Include="Compiler.Common.fs" />
     <Compile Include="Compiler.Codegen.fs" />
