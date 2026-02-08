@@ -2,6 +2,7 @@ namespace Cavere.Tests
 
 open Xunit
 open Cavere.Core
+open Cavere.Generators
 
 module SymbolicTests =
 
@@ -248,38 +249,80 @@ module SymbolicTests =
     [<Fact>]
     let ``isGBMAccumulator: detects GBM pattern`` () =
         // body = self * exp(something)
-        let def = { Init = Const 100.0f; Body = Mul(AccumRef 0, Exp(Add(Const 0.001f, Normal 0))) }
+        let def = {
+            Init = Const 100.0f
+            Body = Mul(AccumRef 0, Exp(Add(Const 0.001f, Normal 0)))
+        }
+
         Assert.True(Analysis.isGBMAccumulator 0 def)
 
     [<Fact>]
     let ``isGBMAccumulator: rejects non-GBM`` () =
-        let def = { Init = Const 100.0f; Body = Add(AccumRef 0, Const 1.0f) }
+        let def = {
+            Init = Const 100.0f
+            Body = Add(AccumRef 0, Const 1.0f)
+        }
+
         Assert.False(Analysis.isGBMAccumulator 0 def)
 
     [<Fact>]
     let ``isDiscountAccumulator: detects discount pattern`` () =
         // body = self * exp(-rate * dt)
-        let def = { Init = Const 1.0f; Body = Mul(AccumRef 0, Exp(Neg(Mul(Const 0.05f, Const 0.004f)))) }
+        let def = {
+            Init = Const 1.0f
+            Body = Mul(AccumRef 0, Exp(Neg(Mul(Const 0.05f, Const 0.004f))))
+        }
+
         Assert.True(Analysis.isDiscountAccumulator 0 def)
 
     [<Fact>]
     let ``detectPathDependence: no time or observers`` () =
         let m = {
             Result = Max(Sub(AccumRef 0, Const 100.0f), Const 0.0f)
-            Accums = Map.ofList [0, { Init = Const 100.0f; Body = Mul(AccumRef 0, Exp(Const 0.01f)) }]
-            Surfaces = Map.empty; Observers = []; NormalCount = 0; UniformCount = 0; BernoulliCount = 0; BatchSize = 0
+            Accums =
+                Map.ofList [
+                    0,
+                    {
+                        Init = Const 100.0f
+                        Body = Mul(AccumRef 0, Exp(Const 0.01f))
+                    }
+                ]
+            Surfaces = Map.empty
+            Observers = []
+            NormalCount = 0
+            UniformCount = 0
+            BernoulliCount = 0
+            BatchSize = 0
         }
+
         Assert.False(Analysis.detectPathDependence m)
 
     [<Fact>]
     let ``detectPathDependence: with observer`` () =
         let m = {
             Result = AccumRef 0
-            Accums = Map.ofList [0, { Init = Const 100.0f; Body = Mul(AccumRef 0, Exp(Const 0.01f)) }]
+            Accums =
+                Map.ofList [
+                    0,
+                    {
+                        Init = Const 100.0f
+                        Body = Mul(AccumRef 0, Exp(Const 0.01f))
+                    }
+                ]
             Surfaces = Map.empty
-            Observers = [{ Name = "stock"; Expr = AccumRef 0; SlotIndex = 0 }]
-            NormalCount = 0; UniformCount = 0; BernoulliCount = 0; BatchSize = 0
+            Observers = [
+                {
+                    Name = "stock"
+                    Expr = AccumRef 0
+                    SlotIndex = 0
+                }
+            ]
+            NormalCount = 0
+            UniformCount = 0
+            BernoulliCount = 0
+            BatchSize = 0
         }
+
         Assert.True(Analysis.detectPathDependence m)
 
     [<Fact>]
