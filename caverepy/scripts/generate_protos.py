@@ -13,7 +13,9 @@ OUTPUT_DIR = Path(__file__).resolve().parent.parent / "src" / "cavere" / "_gener
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     cmd = [
-        sys.executable, "-m", "grpc_tools.protoc",
+        sys.executable,
+        "-m",
+        "grpc_tools.protoc",
         f"--proto_path={PROTO_DIR}",
         f"--python_out={OUTPUT_DIR}",
         f"--grpc_python_out={OUTPUT_DIR}",

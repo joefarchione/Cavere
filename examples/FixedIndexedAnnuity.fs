@@ -81,11 +81,31 @@ let products = [
 ]
 
 let policies = [
-    { Id = "POL-001"; Product = products.[0]; Premium = 100_000.0f }
-    { Id = "POL-002"; Product = products.[0]; Premium = 250_000.0f }
-    { Id = "POL-003"; Product = products.[1]; Premium = 150_000.0f }
-    { Id = "POL-004"; Product = products.[1]; Premium = 75_000.0f }
-    { Id = "POL-005"; Product = products.[2]; Premium = 500_000.0f }
+    {
+        Id = "POL-001"
+        Product = products.[0]
+        Premium = 100_000.0f
+    }
+    {
+        Id = "POL-002"
+        Product = products.[0]
+        Premium = 250_000.0f
+    }
+    {
+        Id = "POL-003"
+        Product = products.[1]
+        Premium = 150_000.0f
+    }
+    {
+        Id = "POL-004"
+        Product = products.[1]
+        Premium = 75_000.0f
+    }
+    {
+        Id = "POL-005"
+        Product = products.[2]
+        Premium = 500_000.0f
+    }
 ]
 
 // ── Runner ─────────────────────────────────────────────────────────

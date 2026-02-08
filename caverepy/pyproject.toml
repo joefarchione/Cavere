@@ -20,6 +20,7 @@ packages = ["src/cavere"]
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+exclude = ["src/cavere/_generated"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -30,5 +31,9 @@ lint = "ruff check ."
 format = "ruff format ."
 typecheck = "ty check"
 
-[tool.ty]
+[tool.ty.environment]
 python-version = "3.10"
+
+[tool.ty.rules]
+unresolved-attribute = "ignore"
+call-non-callable = "ignore"

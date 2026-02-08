@@ -143,30 +143,30 @@ module Common =
 
     /// Default long rate parameters.
     let defaultLongRate = {
-        Beta = 0.00509f        // Monthly mean reversion
-        Tau = 0.0325f          // 3.25% long-term target (MRP)
-        LowerBound = -3.0f     // ~5% floor
-        UpperBound = 0.5f      // ~165% cap
-        Psi = 0.25f            // Steepness parameter
-        R0 = 0.03f             // 3% initial 20-year rate
+        Beta = 0.00509f // Monthly mean reversion
+        Tau = 0.0325f // 3.25% long-term target (MRP)
+        LowerBound = -3.0f // ~5% floor
+        UpperBound = 0.5f // ~165% cap
+        Psi = 0.25f // Steepness parameter
+        R0 = 0.03f // 3% initial 20-year rate
     }
 
     /// Default spread parameters.
     let defaultSpread = {
-        Beta = 0.02685f        // Monthly mean reversion
-        Tau = 0.0f             // Target spread (normally negative)
-        Sigma = 0.04148f       // Spread volatility
-        Phi = 0.0002f          // Tilt parameter
-        Theta = 0.25f          // Rate power dependence
-        Alpha0 = -0.005f       // Initial spread (-50bps)
+        Beta = 0.02685f // Monthly mean reversion
+        Tau = 0.0f // Target spread (normally negative)
+        Sigma = 0.04148f // Spread volatility
+        Phi = 0.0002f // Tilt parameter
+        Theta = 0.25f // Rate power dependence
+        Alpha0 = -0.005f // Initial spread (-50bps)
     }
 
     /// Default log volatility parameters.
     let defaultLogVol = {
-        Beta = 0.03f           // Vol mean reversion
-        Tau = -2.5f            // Target log vol (~8.2%)
-        Sigma = 0.10f          // Vol of vol
-        Nu0 = -2.5f            // Initial log vol
+        Beta = 0.03f // Vol mean reversion
+        Tau = -2.5f // Target log vol (~8.2%)
+        Sigma = 0.10f // Vol of vol
+        Nu0 = -2.5f // Initial log vol
     }
 
     /// Default rate model parameters.
@@ -181,11 +181,11 @@ module Common =
     /// Default S&P 500 equity fund parameters.
     let defaultSP500 = {
         Name = "S&P 500"
-        Mu = 0.0055f           // ~6.6% annual return
-        VolBeta = 0.08f        // Vol mean reversion
-        VolTau = -2.0f         // Target log vol (~13.5%)
-        VolSigma = 0.15f       // Vol of vol
-        Rho = -0.3f            // Leverage effect
+        Mu = 0.0055f // ~6.6% annual return
+        VolBeta = 0.08f // Vol mean reversion
+        VolTau = -2.0f // Target log vol (~13.5%)
+        VolSigma = 0.15f // Vol of vol
+        Rho = -0.3f // Leverage effect
         S0 = 1.0f
         Nu0 = -2.0f
     }
@@ -193,9 +193,9 @@ module Common =
     /// Default international equity parameters.
     let defaultIntlEquity = {
         Name = "International"
-        Mu = 0.005f            // ~6% annual return
+        Mu = 0.005f // ~6% annual return
         VolBeta = 0.06f
-        VolTau = -1.8f         // Higher vol than S&P
+        VolTau = -1.8f // Higher vol than S&P
         VolSigma = 0.18f
         Rho = -0.25f
         S0 = 1.0f
@@ -224,7 +224,7 @@ module Common =
         Name = "Intermediate Bond"
         BondType = Intermediate
         ReferenceMat = 5.0f
-        CreditSpread = 50.0f   // 50 bps
+        CreditSpread = 50.0f // 50 bps
         Duration = 4.5f
         Convexity = 25.0f
         B0 = 1.0f
@@ -235,7 +235,7 @@ module Common =
         Name = "Long Bond"
         BondType = LongTerm
         ReferenceMat = 20.0f
-        CreditSpread = 75.0f   // 75 bps
+        CreditSpread = 75.0f // 75 bps
         Duration = 12.0f
         Convexity = 180.0f
         B0 = 1.0f
@@ -248,4 +248,3 @@ module Common =
         Bonds = [ defaultMoneyMarket; defaultIntermediateBond; defaultLongBond ]
         Steps = 360
     }
-

@@ -1,7 +1,5 @@
 """Batch simulation — price GBM calls across multiple strikes at once."""
 
-import numpy as np
-
 from cavere import CavereClient, call_payoff, gbm
 
 # GBM model; batch_values will replace the payoff strike
@@ -14,5 +12,5 @@ with CavereClient("localhost:5000") as client:
     means = client.batch_fold_means(spec, num_scenarios=50_000, batch_values=strikes)
     print("Strike | Price")
     print("-------+-------")
-    for strike, price in zip(strikes, means):
+    for strike, price in zip(strikes, means, strict=False):
         print(f"{strike:6.0f} | {price:.4f}")

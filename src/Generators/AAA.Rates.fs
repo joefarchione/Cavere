@@ -11,7 +11,7 @@ open Cavere.Generators.AAA.Common
 module Rates =
 
     // Helper to convert float log result to float32 Const
-    let inline logC (x: float32) = Const (float32 (log (float x)))
+    let inline logC (x: float32) = Const(float32 (log (float x)))
 
     // ══════════════════════════════════════════════════════════════════
     // Core SLV Interest Rate Model
@@ -22,9 +22,9 @@ module Rates =
     let slvRateModel (p: RateModelParams) : ModelCtx -> Expr * Expr * Expr * Expr =
         fun ctx ->
             // Generate normals for the 3 processes
-            let z1 = normal ctx  // Long rate
-            let z2 = normal ctx  // Spread
-            let z3 = normal ctx  // Log vol
+            let z1 = normal ctx // Long rate
+            let z2 = normal ctx // Spread
+            let z3 = normal ctx // Log vol
 
             // Correlate z2 and z3 with z1
             let rho12 = p.RhoLongSpread
@@ -40,21 +40,25 @@ module Rates =
                 let tau = p.LogVol.Tau
                 let sigma = p.LogVol.Sigma
                 let nu0 = p.LogVol.Nu0
-                evolve nu0.C (fun nu ->
-                    (1.0f - beta).C * nu + beta.C * tau.C + sigma.C * z3Corr) ctx
+                evolve nu0.C (fun nu -> (1.0f - beta).C * nu + beta.C * tau.C + sigma.C * z3Corr) ctx
 
             // Build log of long rate
             let logR0 = float32 (log (float p.LongRate.R0))
             let logTau1 = float32 (log (float p.LongRate.Tau))
+
             let longRateLog =
                 let beta = p.LongRate.Beta
                 let lb = p.LongRate.LowerBound
                 let ub = p.LongRate.UpperBound
-                evolve logR0.C (fun logR ->
-                    let sigma = Expr.exp logVol
-                    let meanRev = (1.0f - beta).C * logR + beta.C * logTau1.C
-                    let clamped = Expr.max lb.C (Expr.min ub.C meanRev)
-                    clamped + sigma * z1) ctx
+
+                evolve
+                    logR0.C
+                    (fun logR ->
+                        let sigma = Expr.exp logVol
+                        let meanRev = (1.0f - beta).C * logR + beta.C * logTau1.C
+                        let clamped = Expr.max lb.C (Expr.min ub.C meanRev)
+                        clamped + sigma * z1)
+                    ctx
 
             let longRate = Expr.exp longRateLog
 
@@ -65,10 +69,14 @@ module Rates =
                 let sigma = p.Spread.Sigma
                 let theta = p.Spread.Theta
                 let alpha0 = p.Spread.Alpha0
-                evolve alpha0.C (fun alpha ->
-                    let meanRev = (1.0f - beta).C * alpha + beta.C * tau.C
-                    let ratePower = Expr.exp (theta.C * Expr.log (Expr.max 0.001f.C longRate))
-                    meanRev + sigma.C * z2Corr * ratePower) ctx
+
+                evolve
+                    alpha0.C
+                    (fun alpha ->
+                        let meanRev = (1.0f - beta).C * alpha + beta.C * tau.C
+                        let ratePower = Expr.exp (theta.C * Expr.log (Expr.max 0.001f.C longRate))
+                        meanRev + sigma.C * z2Corr * ratePower)
+                    ctx
 
             // Short rate from long rate and spread
             let shortRate = longRate * Expr.exp spread
@@ -81,13 +89,11 @@ module Rates =
 
     /// Discount factor accumulator from short rate.
     let discountFactor (rate: Expr) (dt: Expr) : ModelCtx -> Expr =
-        fun ctx ->
-            evolve 1.0f.C (fun df -> df * Expr.exp (-(rate * dt))) ctx
+        fun ctx -> evolve 1.0f.C (fun df -> df * Expr.exp (-(rate * dt))) ctx
 
     /// Accumulated short rate (for path-dependent products).
     let accumulatedRate (rate: Expr) (dt: Expr) : ModelCtx -> Expr =
-        fun ctx ->
-            evolve 0.0f.C (fun accum -> accum + rate * dt) ctx
+        fun ctx -> evolve 0.0f.C (fun accum -> accum + rate * dt) ctx
 
     /// Nelson-Siegel yield curve interpolation.
     let nelsonSiegelYield (longRate: Expr) (shortRate: Expr) (maturity: float32) (lambda: float32) : Expr =
@@ -97,5 +103,4 @@ module Rates =
         shortRate * factor1.C + longRate * (1.0f - factor1).C
 
     /// Rate change for duration effect.
-    let rateChange (rate: Expr) (prevRate: Expr) : Expr =
-        rate - prevRate
+    let rateChange (rate: Expr) (prevRate: Expr) : Expr = rate - prevRate
