@@ -325,6 +325,55 @@ module SymbolicTests =
 
         Assert.True(Analysis.detectPathDependence m)
 
+    // ══════════════════════════════════════════════════════════════════
+    // Condition Combinator Tests
+    // ══════════════════════════════════════════════════════════════════
+
+    [<Fact>]
+    let ``simplify: And with constant true`` () =
+        let expr = And(Const 1.0f, Normal 0)
+        Assert.Equal(Normal 0, Symbolic.simplify expr)
+
+    [<Fact>]
+    let ``simplify: And with constant false`` () =
+        let expr = And(Const 0.0f, Normal 0)
+        Assert.Equal(Const 0.0f, Symbolic.simplify expr)
+
+    [<Fact>]
+    let ``simplify: Or with constant true`` () =
+        let expr = Or(Const 1.0f, Normal 0)
+        Assert.Equal(Const 1.0f, Symbolic.simplify expr)
+
+    [<Fact>]
+    let ``simplify: Or with constant false`` () =
+        let expr = Or(Const 0.0f, Normal 0)
+        Assert.Equal(Normal 0, Symbolic.simplify expr)
+
+    [<Fact>]
+    let ``simplify: Not of Not is identity`` () =
+        let expr = Not(Not(Normal 0))
+        Assert.Equal(Normal 0, Symbolic.simplify expr)
+
+    [<Fact>]
+    let ``simplify: Not of constant`` () =
+        Assert.Equal(Const 0.0f, Symbolic.simplify (Not(Const 1.0f)))
+        Assert.Equal(Const 1.0f, Symbolic.simplify (Not(Const 0.0f)))
+
+    [<Fact>]
+    let ``diff: And/Or/Not have zero derivative`` () =
+        let and' = And(Gt(Normal 0, Const 0.0f), Lt(Normal 1, Const 1.0f))
+        Assert.Equal(Const 0.0f, Symbolic.diff and' 0)
+        let or' = Or(Gt(Normal 0, Const 0.0f), Lt(Normal 1, Const 1.0f))
+        Assert.Equal(Const 0.0f, Symbolic.diff or' 0)
+        let not' = Not(Gt(Normal 0, Const 0.0f))
+        Assert.Equal(Const 0.0f, Symbolic.diff not' 0)
+
+    [<Fact>]
+    let ``countNodes: And is binary, Not is unary`` () =
+        Assert.Equal(3, Symbolic.countNodes (And(Const 1.0f, Const 0.0f)))
+        Assert.Equal(3, Symbolic.countNodes (Or(Const 1.0f, Const 0.0f)))
+        Assert.Equal(2, Symbolic.countNodes (Not(Const 1.0f)))
+
     [<Fact>]
     let ``GBMMoments: mean of GBM`` () =
         let expected = 100.0f * System.MathF.Exp(0.05f * 1.0f)
