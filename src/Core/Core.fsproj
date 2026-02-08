@@ -19,6 +19,7 @@
     <Compile Include="Compiler.Batch.fs" />
     <Compile Include="Compiler.Diff.fs" />
     <Compile Include="Compiler.Adjoint.fs" />
+    <Compile Include="Compiler.Cpu.fs" />
     <Compile Include="Compiler.fs" />
     <!-- Sim: Device management, kernel launch, simulation -->
     <Compile Include="Sim.Device.fs" />

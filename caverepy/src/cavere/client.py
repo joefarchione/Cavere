@@ -16,7 +16,13 @@ from cavere._generated import simulation_pb2_grpc as pb_grpc
 
 
 def _device_enum(device: str) -> int:
-    return pb.GPU if device.upper() == "GPU" else pb.CPU
+    d = device.upper()
+    if d == "GPU":
+        return pb.GPU
+    elif d == "EMULATED":
+        return pb.EMULATED
+    else:
+        return pb.CPU
 
 
 def _freq_enum(frequency: str) -> int:
@@ -49,9 +55,7 @@ def put_payoff(strike: float, discounted: bool = True) -> pb.PayoffSpec:
     return pb.PayoffSpec(type=pb.PAYOFF_PUT, strike=strike, discounted=discounted)
 
 
-def vol_surface(
-    time_axis: list[float], spot_axis: list[float], values: list[float]
-) -> pb.VolSurface:
+def vol_surface(time_axis: list[float], spot_axis: list[float], values: list[float]) -> pb.VolSurface:
     return pb.VolSurface(time_axis=time_axis, spot_axis=spot_axis, values=values)
 
 
@@ -101,9 +105,7 @@ def heston(
     payoff: pb.PayoffSpec | None = None,
     observers: list[str] | None = None,
 ) -> pb.ModelSpec:
-    m = pb.HestonModel(
-        spot=spot, rate=rate, v0=v0, kappa=kappa, theta=theta, xi=xi, rho=rho, steps=steps
-    )
+    m = pb.HestonModel(spot=spot, rate=rate, v0=v0, kappa=kappa, theta=theta, xi=xi, rho=rho, steps=steps)
     if payoff is not None:
         m.payoff.CopyFrom(payoff)
     spec = pb.ModelSpec(heston=m)
@@ -122,9 +124,7 @@ def multi_asset_heston(
     observers: list[str] | None = None,
 ) -> pb.ModelSpec:
     asset_specs = [
-        pb.HestonAssetSpec(
-            spot=a["spot"], v0=a["v0"], kappa=a["kappa"], theta=a["theta"], xi=a["xi"], rho=a["rho"]
-        )
+        pb.HestonAssetSpec(spot=a["spot"], v0=a["v0"], kappa=a["kappa"], theta=a["theta"], xi=a["xi"], rho=a["rho"])
         for a in assets
     ]
     m = pb.MultiAssetHestonModel(
@@ -169,8 +169,13 @@ def cirpp(
     observers: list[str] | None = None,
 ) -> pb.ModelSpec:
     m = pb.CIRPPModel(
-        kappa=kappa, theta=theta, sigma=sigma, x0=x0,
-        forward_tenors=forward_tenors, forward_rates=forward_rates, steps=steps,
+        kappa=kappa,
+        theta=theta,
+        sigma=sigma,
+        x0=x0,
+        forward_tenors=forward_tenors,
+        forward_rates=forward_rates,
+        steps=steps,
     )
     spec = pb.ModelSpec(cirpp=m)
     if observers:
@@ -208,8 +213,11 @@ class CavereClient:
         use_pinned: bool = False,
     ) -> NDArray[np.float32]:
         req = pb.SimulationRequest(
-            model=model_spec, num_scenarios=num_scenarios,
-            device=_device_enum(device), device_count=device_count, use_pinned=use_pinned,
+            model=model_spec,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.Fold(req)
         return np.array(resp.values, dtype=np.float32)
@@ -224,9 +232,12 @@ class CavereClient:
         use_pinned: bool = False,
     ) -> tuple[NDArray[np.float32], dict[str, NDArray[np.float32]]]:
         req = pb.WatchRequest(
-            model=model_spec, num_scenarios=num_scenarios,
-            device=_device_enum(device), frequency=_freq_enum(frequency),
-            device_count=device_count, use_pinned=use_pinned,
+            model=model_spec,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            frequency=_freq_enum(frequency),
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.FoldWatch(req)
         finals = np.array(resp.finals, dtype=np.float32)
@@ -244,8 +255,11 @@ class CavereClient:
         use_pinned: bool = False,
     ) -> NDArray[np.float32]:
         req = pb.SimulationRequest(
-            model=model_spec, num_scenarios=num_scenarios,
-            device=_device_enum(device), device_count=device_count, use_pinned=use_pinned,
+            model=model_spec,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.Scan(req)
         return np.array(resp.values, dtype=np.float32).reshape(resp.steps, resp.num_scenarios)
@@ -270,9 +284,12 @@ class CavereClient:
         use_pinned: bool = False,
     ) -> NDArray[np.float32]:
         req = pb.BatchRequest(
-            model=model_spec, num_scenarios=num_scenarios,
-            device=_device_enum(device), batch_values=batch_values,
-            device_count=device_count, use_pinned=use_pinned,
+            model=model_spec,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            batch_values=batch_values,
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.BatchFold(req)
         num_batch = len(batch_values)
@@ -289,9 +306,13 @@ class CavereClient:
         use_pinned: bool = False,
     ) -> tuple[NDArray[np.float32], dict[str, NDArray[np.float32]]]:
         req = pb.BatchWatchRequest(
-            model=model_spec, num_scenarios=num_scenarios,
-            device=_device_enum(device), batch_values=batch_values,
-            frequency=_freq_enum(frequency), device_count=device_count, use_pinned=use_pinned,
+            model=model_spec,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            batch_values=batch_values,
+            frequency=_freq_enum(frequency),
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.BatchFoldWatch(req)
         finals = np.array(resp.finals, dtype=np.float32)
@@ -310,9 +331,12 @@ class CavereClient:
         use_pinned: bool = False,
     ) -> NDArray[np.float32]:
         req = pb.BatchRequest(
-            model=model_spec, num_scenarios=num_scenarios,
-            device=_device_enum(device), batch_values=batch_values,
-            device_count=device_count, use_pinned=use_pinned,
+            model=model_spec,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            batch_values=batch_values,
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.BatchFoldMeans(req)
         return np.array(resp.values, dtype=np.float32)
@@ -345,9 +369,13 @@ class CavereClient:
     ) -> tuple[NDArray[np.float32], dict[str, NDArray[np.float32]]]:
         """Forward-mode AD (Dual or HyperDual). Returns (values, derivative_observers)."""
         req = pb.DiffRequest(
-            model=model_spec, num_scenarios=num_scenarios,
-            device=_device_enum(device), diff_mode=_diff_mode_enum(diff_mode),
-            frequency=_freq_enum(frequency), device_count=device_count, use_pinned=use_pinned,
+            model=model_spec,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            diff_mode=_diff_mode_enum(diff_mode),
+            frequency=_freq_enum(frequency),
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.FoldDiff(req)
         finals = np.array(resp.finals, dtype=np.float32)
@@ -366,8 +394,11 @@ class CavereClient:
     ) -> tuple[NDArray[np.float32], NDArray[np.float32], list[int]]:
         """Reverse-mode AD. Returns (values, adjoints[scenarios, diff_vars], diff_var_indices)."""
         req = pb.AdjointRequest(
-            model=model_spec, num_scenarios=num_scenarios,
-            device=_device_enum(device), device_count=device_count, use_pinned=use_pinned,
+            model=model_spec,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.FoldAdjoint(req)
         values = np.array(resp.values, dtype=np.float32)
@@ -405,8 +436,11 @@ class CavereClient:
     ) -> NDArray[np.float32]:
         """Run a pre-compiled kernel. Returns scenario values."""
         req = pb.KernelRunRequest(
-            kernel_id=kernel_id, num_scenarios=num_scenarios,
-            device=_device_enum(device), device_count=device_count, use_pinned=use_pinned,
+            kernel_id=kernel_id,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.FoldKernel(req)
         return np.array(resp.values, dtype=np.float32)
@@ -422,9 +456,12 @@ class CavereClient:
     ) -> tuple[NDArray[np.float32], dict[str, NDArray[np.float32]]]:
         """Run a pre-compiled kernel with observer recording."""
         req = pb.KernelWatchRequest(
-            kernel_id=kernel_id, num_scenarios=num_scenarios,
-            device=_device_enum(device), frequency=_freq_enum(frequency),
-            device_count=device_count, use_pinned=use_pinned,
+            kernel_id=kernel_id,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            frequency=_freq_enum(frequency),
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.FoldWatchKernel(req)
         finals = np.array(resp.finals, dtype=np.float32)
@@ -443,8 +480,11 @@ class CavereClient:
     ) -> NDArray[np.float32]:
         """Run a pre-compiled kernel in scan mode. Returns [steps, scenarios] array."""
         req = pb.KernelRunRequest(
-            kernel_id=kernel_id, num_scenarios=num_scenarios,
-            device=_device_enum(device), device_count=device_count, use_pinned=use_pinned,
+            kernel_id=kernel_id,
+            num_scenarios=num_scenarios,
+            device=_device_enum(device),
+            device_count=device_count,
+            use_pinned=use_pinned,
         )
         resp = self.stub.ScanKernel(req)
         return np.array(resp.values, dtype=np.float32).reshape(resp.steps, resp.num_scenarios)

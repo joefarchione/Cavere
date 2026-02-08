@@ -257,6 +257,7 @@ message VolSurface {
 enum DeviceType {
   CPU = 0;
   GPU = 1;
+  EMULATED = 2;
 }
 
 enum Frequency {

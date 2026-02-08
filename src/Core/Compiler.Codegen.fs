@@ -88,11 +88,33 @@ module CompilerCodegen =
                 return (float)lo;
             }"""
 
+    let csCpuFindBin =
+        dedent
+            """
+            static float FindBin(float[] surfaces, int axisOffset, int count, float value)
+            {
+                int lo = 0;
+                int hi = count - 2;
+                while (lo < hi)
+                {
+                    int mid = (lo + hi + 1) / 2;
+                    if (value >= surfaces[axisOffset + mid])
+                        lo = mid;
+                    else
+                        hi = mid - 1;
+                }
+                return (float)lo;
+            }"""
+
     // ══════════════════════════════════════════════════════════════════
     // Dynamic Emitters
     // ══════════════════════════════════════════════════════════════════
 
+    let csSharedHelpers = [ csHash; csToFloat; csBoxMuller ] |> String.concat "\n"
+
     let emitHelpers (_layout: SurfaceLayout) = [ csHash; csToFloat; csBoxMuller; csFindBin ] |> String.concat "\n"
+
+    let emitCpuHelpers (_layout: SurfaceLayout) = [ csHash; csToFloat; csBoxMuller; csCpuFindBin ] |> String.concat "\n"
 
     let emitAccumDecls (sb: Text.StringBuilder) (layout: SurfaceLayout) (sortedAccums: (int * AccumDef) list) =
         for (id, def) in sortedAccums do
@@ -145,6 +167,7 @@ module CompilerCodegen =
 
         for (id, _) in sortedAccums do
             sb.AppendLine(sprintf "            accum_%d = new_accum_%d;" id id) |> ignore
+
 
     let emitObserverRecording
         (sb: Text.StringBuilder)

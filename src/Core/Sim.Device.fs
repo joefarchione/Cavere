@@ -7,8 +7,9 @@ open ILGPU.Runtime.CPU
 open ILGPU.Runtime.Cuda
 
 type DeviceType =
-    | CPU
-    | GPU
+    | CPU // Native compiled C# with Parallel.For — no ILGPU
+    | GPU // ILGPU CUDA
+    | Emulated // ILGPU CPU accelerator
 
 type MultiDeviceConfig = {
     DeviceType: DeviceType
@@ -23,43 +24,61 @@ type DeviceSet = {
 module Device =
 
     let create (deviceType: DeviceType) : Context * Accelerator =
-        let ctx =
-            Context.Create(fun builder ->
-                match deviceType with
-                | CPU -> builder.CPU() |> ignore
-                | GPU -> builder.Cuda() |> ignore
-                builder.EnableAlgorithms() |> ignore)
-        let accel =
-            match deviceType with
-            | CPU -> ctx.GetDevice<CPUDevice>(0).CreateAccelerator(ctx)
-            | GPU -> ctx.GetDevice<CudaDevice>(0).CreateAccelerator(ctx)
-        ctx, accel
+        match deviceType with
+        | CPU -> failwith "CPU mode does not use ILGPU — use Engine.foldCpu directly"
+        | Emulated ->
+            let ctx =
+                Context.Create(fun builder ->
+                    builder.CPU() |> ignore
+                    builder.EnableAlgorithms() |> ignore)
+
+            let accel = ctx.GetDevice<CPUDevice>(0).CreateAccelerator(ctx)
+            ctx, accel
+        | GPU ->
+            let ctx =
+                Context.Create(fun builder ->
+                    builder.Cuda() |> ignore
+                    builder.EnableAlgorithms() |> ignore)
+
+            let accel = ctx.GetDevice<CudaDevice>(0).CreateAccelerator(ctx)
+            ctx, accel
 
     let cudaDeviceCount () : int =
         try
             use ctx = Context.Create(fun builder -> builder.Cuda() |> ignore)
             ctx.Devices.Length
-        with _ -> 0
+        with _ ->
+            0
 
     let createMulti (config: MultiDeviceConfig) : DeviceSet =
-        let ctx =
-            Context.Create(fun builder ->
+        match config.DeviceType with
+        | CPU -> failwith "CPU mode does not support multi-device — Parallel.For handles threading"
+        | Emulated
+        | GPU ->
+            let ctx =
+                Context.Create(fun builder ->
+                    match config.DeviceType with
+                    | Emulated -> builder.CPU() |> ignore
+                    | GPU -> builder.Cuda() |> ignore
+                    | CPU -> ()
+
+                    builder.EnableAlgorithms() |> ignore)
+
+            let accels =
                 match config.DeviceType with
-                | CPU -> builder.CPU() |> ignore
-                | GPU -> builder.Cuda() |> ignore
-                builder.EnableAlgorithms() |> ignore)
-        let accels =
-            match config.DeviceType with
-            | CPU ->
-                Array.init config.DeviceCount (fun _ ->
-                    ctx.GetDevice<CPUDevice>(0).CreateAccelerator(ctx))
-            | GPU ->
-                let deviceCount = ctx.Devices.Length
-                Array.init config.DeviceCount (fun i ->
-                    ctx.GetDevice<CudaDevice>(i % deviceCount).CreateAccelerator(ctx))
-        { Context = ctx; Accelerators = accels }
+                | Emulated ->
+                    Array.init config.DeviceCount (fun _ -> ctx.GetDevice<CPUDevice>(0).CreateAccelerator(ctx))
+                | GPU ->
+                    let deviceCount = ctx.Devices.Length
+
+                    Array.init config.DeviceCount (fun i ->
+                        ctx.GetDevice<CudaDevice>(i % deviceCount).CreateAccelerator(ctx))
+                | CPU -> Array.empty
+
+            { Context = ctx; Accelerators = accels }
 
     let disposeMulti (ds: DeviceSet) : unit =
         for accel in ds.Accelerators do
             accel.Dispose()
+
         ds.Context.Dispose()
