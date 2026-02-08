@@ -19,7 +19,7 @@ module Policy =
         DateOfBirth: DateTime
         Gender: Gender
         IsSmoker: bool
-        State: string  // State of residence (for tax/regulatory)
+        State: string // State of residence (for tax/regulatory)
     }
 
     module Policyholder =
@@ -106,21 +106,25 @@ module Policy =
         | GeneralAndSeparate of general: float32 * subAccounts: SubAccountBalance list
 
     module AccountStructure =
-        let totalValue = function
+        let totalValue =
+            function
             | GeneralOnly v -> v
-            | GeneralAndSeparate (ga, subs) -> ga + (subs |> List.sumBy _.Value)
+            | GeneralAndSeparate(ga, subs) -> ga + (subs |> List.sumBy _.Value)
 
-        let generalValue = function
+        let generalValue =
+            function
             | GeneralOnly v -> v
-            | GeneralAndSeparate (ga, _) -> ga
+            | GeneralAndSeparate(ga, _) -> ga
 
-        let subAccountValues = function
+        let subAccountValues =
+            function
             | GeneralOnly _ -> []
-            | GeneralAndSeparate (_, subs) -> subs
+            | GeneralAndSeparate(_, subs) -> subs
 
-        let mapGeneral (f: float32 -> float32) = function
-            | GeneralOnly v -> GeneralOnly (f v)
-            | GeneralAndSeparate (ga, subs) -> GeneralAndSeparate (f ga, subs)
+        let mapGeneral (f: float32 -> float32) =
+            function
+            | GeneralOnly v -> GeneralOnly(f v)
+            | GeneralAndSeparate(ga, subs) -> GeneralAndSeparate(f ga, subs)
 
     // ══════════════════════════════════════════════════════════════════
     // Policy Record
@@ -175,11 +179,18 @@ module Policy =
             (generalPortion: float32)
             : Policy =
             let separatePortion = premium - generalPortion
+
             let subAccounts =
                 product.SubAccountAllocations
                 |> List.map (fun alloc ->
                     let value = separatePortion * alloc.Allocation
-                    { SubAccount = alloc.SubAccount; Units = value; Value = value })
+
+                    {
+                        SubAccount = alloc.SubAccount
+                        Units = value
+                        Value = value
+                    })
+
             {
                 Id = id
                 Owner = owner
@@ -187,7 +198,7 @@ module Policy =
                 Product = VariableAnnuity product
                 IssueDate = issueDate
                 Premium = premium
-                Account = GeneralAndSeparate (generalPortion, subAccounts)
+                Account = GeneralAndSeparate(generalPortion, subAccounts)
                 Status = Active
             }
 

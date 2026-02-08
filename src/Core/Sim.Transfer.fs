@@ -13,6 +13,7 @@ type PinnedPool(accel: Accelerator) =
 
     member _.Rent(size: int64) : PageLockedArray1D<float32> =
         let bag = pools.GetOrAdd(size, fun _ -> ConcurrentBag<PageLockedArray1D<float32>>())
+
         match bag.TryTake() with
         | true, buf -> buf
         | _ -> accel.AllocatePageLocked1D<float32>(size)
@@ -25,9 +26,11 @@ type PinnedPool(accel: Accelerator) =
     interface IDisposable with
         member _.Dispose() =
             disposed <- true
+
             for kvp in pools do
                 for buf in kvp.Value do
                     (buf :> IDisposable).Dispose()
+
             pools.Clear()
 
 /// GPU transfer utilities using pinned memory and async streams.
@@ -37,8 +40,10 @@ module Transfer =
     let copyToDevicePinned (accel: Accelerator) (data: float32[]) : MemoryBuffer1D<float32, Stride1D.Dense> =
         use pinned = accel.AllocatePageLocked1D<float32>(data.LongLength)
         let span = pinned.Span
+
         for i in 0 .. data.Length - 1 do
             span.[i] <- data.[i]
+
         let buf = accel.Allocate1D<float32>(data.LongLength)
         buf.View.CopyFromPageLockedAsync(pinned)
         accel.Synchronize()

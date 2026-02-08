@@ -323,8 +323,25 @@ module CompilerCpu =
     // Roslyn Compilation (no ILGPU references)
     // ══════════════════════════════════════════════════════════════════
 
+    let private stableHash (s: string) =
+        let mutable h = 0x811c9dc5u
+        for c in s do
+            h <- h ^^^ uint32 c
+            h <- h * 0x01000193u
+        sprintf "%08X" h
+
     let compile (source: string) : Assembly =
+#if DEBUG
+        let tempDir = Path.Combine(Path.GetTempPath(), "Cavere")
+        Directory.CreateDirectory(tempDir) |> ignore
+        let srcPath = Path.Combine(tempDir, $"GeneratedCpuKernel_{stableHash source}.cs")
+        File.WriteAllText(srcPath, source)
+        System.Diagnostics.Debug.WriteLine($"[Cavere] CPU kernel source: {srcPath}")
+        let sourceText = Microsoft.CodeAnalysis.Text.SourceText.From(source, System.Text.Encoding.UTF8)
+        let tree = CSharpSyntaxTree.ParseText(sourceText, path = srcPath)
+#else
         let tree = CSharpSyntaxTree.ParseText(source)
+#endif
 
         let refs =
             [|
@@ -341,19 +358,21 @@ module CompilerCpu =
             |> Array.distinct
             |> Array.map (fun loc -> MetadataReference.CreateFromFile(loc) :> MetadataReference)
 
+#if DEBUG
+        let opts =
+            CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+                .WithAllowUnsafe(true)
+                .WithOptimizationLevel(OptimizationLevel.Debug)
+#else
         let opts =
             CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
                 .WithAllowUnsafe(true)
                 .WithOptimizationLevel(OptimizationLevel.Release)
+#endif
 
         let compilation = CSharpCompilation.Create("GeneratedCpuKernel", [| tree |], refs, opts)
 
 #if DEBUG
-        let tempDir = Path.Combine(Path.GetTempPath(), "Cavere")
-        Directory.CreateDirectory(tempDir) |> ignore
-        let srcPath = Path.Combine(tempDir, $"GeneratedCpuKernel_{Guid.NewGuid():N}.cs")
-        File.WriteAllText(srcPath, source)
-
         let ms = new MemoryStream()
         let pdbStream = new MemoryStream()
         let emitOpts = Emit.EmitOptions(debugInformationFormat = Emit.DebugInformationFormat.PortablePdb)
