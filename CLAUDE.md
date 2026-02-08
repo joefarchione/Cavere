@@ -12,6 +12,19 @@ dotnet run --project examples/Examples.fsproj         # Run all examples
 dotnet clean                                          # Clean build artifacts
 ```
 
+## Pre-commit Hooks
+
+```bash
+pip install pre-commit       # or: pipx install pre-commit
+pre-commit install           # installs hooks into .git/hooks/
+pre-commit run --all-files   # verify all hooks pass
+```
+
+Hooks run automatically on `git commit` and check:
+- **Fantomas** — F# formatting (requires `dotnet tool install -g fantomas`)
+- **ruff format** + **ruff lint** — Python formatting and linting (auto-downloaded by pre-commit)
+- **ty** — Python type-checking (requires `uv` installed)
+
 ## Solution Structure
 
 ```
