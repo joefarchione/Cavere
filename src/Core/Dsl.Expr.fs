@@ -27,6 +27,7 @@ type Expr =
     | Sqrt of Expr
     | Abs of Expr
     | BatchRef of surfaceId: int
+    | Cond of cases: (Expr * Expr) list * defaultExpr: Expr
     | BinSearch of surfaceId: int * axisOff: int * axisCnt: int * value: Expr
     | Dual of index: int * value: float32 * name: string
     | HyperDual of index: int * value: float32 * name: string
@@ -68,10 +69,10 @@ type Expr =
 
 /// Differentiation mode for automatic differentiation.
 type DiffMode =
-    | DualMode                         // 1st order only (fastest)
-    | HyperDualMode of diagonal: bool  // diagonal=true: only d²V/dSi², diagonal=false: all crosses
-    | JetMode of order: int            // Arbitrary order Taylor
-    | AdjointMode                      // Backward mode (all 1st order, memory efficient)
+    | DualMode // 1st order only (fastest)
+    | HyperDualMode of diagonal: bool // diagonal=true: only d²V/dSi², diagonal=false: all crosses
+    | JetMode of order: int // Arbitrary order Taylor
+    | AdjointMode // Backward mode (all 1st order, memory efficient)
 
 module Expr =
     let exp e = Exp e
@@ -81,6 +82,7 @@ module Expr =
     let max a b = Max(a, b)
     let min a b = Min(a, b)
     let select cond ifTrue ifFalse = Select(cond, ifTrue, ifFalse)
+    let cond (cases: (Expr * Expr) list) (defaultExpr: Expr) = Cond(cases, defaultExpr)
     let clip lo hi x = Max(lo, Min(hi, x))
     let floor e = Floor e
     let surfaceAt sid index = SurfaceAt(sid, index)

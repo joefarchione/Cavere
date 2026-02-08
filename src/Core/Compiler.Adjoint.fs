@@ -31,47 +31,58 @@ module CompilerAdjoint =
         let accumIds = sorted |> List.map fst
 
         let bodyPartialsAccum =
-            [ for (jId, jDef) in sorted do
-                  for kId in accumIds do
-                      (jId, kId), CompilerDiff.partialDiffAccumRef jDef.Body kId ]
+            [
+                for (jId, jDef) in sorted do
+                    for kId in accumIds do
+                        (jId, kId), CompilerDiff.partialDiffAccumRef jDef.Body kId
+            ]
             |> Map.ofList
 
         let bodyPartialsDiffVar =
-            [ for (jId, jDef) in sorted do
-                  for dvIdx in diffVars do
-                      (jId, dvIdx), CompilerDiff.partialDiffDiffVar jDef.Body dvIdx ]
+            [
+                for (jId, jDef) in sorted do
+                    for dvIdx in diffVars do
+                        (jId, dvIdx), CompilerDiff.partialDiffDiffVar jDef.Body dvIdx
+            ]
             |> Map.ofList
 
         let initPartialsDiffVar =
-            [ for (jId, jDef) in sorted do
-                  for dvIdx in diffVars do
-                      (jId, dvIdx), CompilerDiff.partialDiffDiffVar jDef.Init dvIdx ]
+            [
+                for (jId, jDef) in sorted do
+                    for dvIdx in diffVars do
+                        (jId, dvIdx), CompilerDiff.partialDiffDiffVar jDef.Init dvIdx
+            ]
             |> Map.ofList
 
         let resultPartialsAccum =
-            [ for aId in accumIds do
-                  aId, CompilerDiff.partialDiffAccumRef model.Result aId ]
+            [
+                for aId in accumIds do
+                    aId, CompilerDiff.partialDiffAccumRef model.Result aId
+            ]
             |> Map.ofList
 
         let resultPartialsDiffVar =
-            [ for dvIdx in diffVars do
-                  dvIdx, CompilerDiff.partialDiffDiffVar model.Result dvIdx ]
+            [
+                for dvIdx in diffVars do
+                    dvIdx, CompilerDiff.partialDiffDiffVar model.Result dvIdx
+            ]
             |> Map.ofList
 
-        { DiffVars = diffVars
-          SortedAccums = sorted
-          BodyPartialsAccum = bodyPartialsAccum
-          BodyPartialsDiffVar = bodyPartialsDiffVar
-          InitPartialsDiffVar = initPartialsDiffVar
-          ResultPartialsAccum = resultPartialsAccum
-          ResultPartialsDiffVar = resultPartialsDiffVar }
+        {
+            DiffVars = diffVars
+            SortedAccums = sorted
+            BodyPartialsAccum = bodyPartialsAccum
+            BodyPartialsDiffVar = bodyPartialsDiffVar
+            InitPartialsDiffVar = initPartialsDiffVar
+            ResultPartialsAccum = resultPartialsAccum
+            ResultPartialsDiffVar = resultPartialsDiffVar
+        }
 
     // ══════════════════════════════════════════════════════════════════
     // Kernel Emitter
     // ══════════════════════════════════════════════════════════════════
 
-    let private emitFoldAdjointKernel
-        (model: Model) (layout: SurfaceLayout) (info: AdjointInfo) =
+    let private emitFoldAdjointKernel (model: Model) (layout: SurfaceLayout) (info: AdjointInfo) =
 
         let sb = Text.StringBuilder()
         let line (s: string) = sb.AppendLine(s) |> ignore
@@ -93,8 +104,10 @@ module CompilerAdjoint =
         line "    {"
         line "        int idx = (int)index;"
         line "        int seed = idx + indexOffset;"
+
         if numAccums > 0 then
             linef "        int tapeBase = idx * %d * steps;" numAccums
+
         line "        int t;"
         line ""
 
@@ -120,13 +133,15 @@ module CompilerAdjoint =
             line "        }"
 
         line ""
-        linef "        output[idx] = %s;" (emit model.Result)
+        CompilerCodegen.emitWithPreamble sb layout model.Result (sprintf "        output[idx] = %s;")
         line ""
 
         // Backward pass — seed adjoints from result
         line "        // Backward pass"
+
         for aId in accumIds do
             linef "        float adj_a_%d = %s;" aId (emit info.ResultPartialsAccum.[aId])
+
         for dvIdx in info.DiffVars do
             linef "        float adj_dv_%d = %s;" dvIdx (emit info.ResultPartialsDiffVar.[dvIdx])
 
@@ -161,10 +176,12 @@ module CompilerAdjoint =
 
             for kId in accumIds do
                 let terms =
-                    info.SortedAccums |> List.choose (fun (jId, _) ->
+                    info.SortedAccums
+                    |> List.choose (fun (jId, _) ->
                         match info.BodyPartialsAccum.[(jId, kId)] with
                         | Const 0.0f -> None
                         | pd -> Some $"tmp_a_{jId} * {emit pd}")
+
                 if terms.IsEmpty then
                     linef "            adj_a_%d = 0.0f;" kId
                 else
@@ -195,10 +212,12 @@ module CompilerAdjoint =
     // ══════════════════════════════════════════════════════════════════
 
     let generateSource (model: Model) (layout: SurfaceLayout) (info: AdjointInfo) : string =
-        [ CompilerCodegen.csPreamble
-          CompilerCodegen.emitHelpers layout
-          emitFoldAdjointKernel model layout info
-          "}" ]
+        [
+            CompilerCodegen.csPreamble
+            CompilerCodegen.emitHelpers layout
+            emitFoldAdjointKernel model layout info
+            "}"
+        ]
         |> String.concat "\n"
 
     // ══════════════════════════════════════════════════════════════════
@@ -212,7 +231,14 @@ module CompilerAdjoint =
         let source = generateSource model layout info
         let assembly = CompilerRegular.compile source
         let kernelType = assembly.GetType("GeneratedKernel")
-        { Assembly = assembly; KernelType = kernelType; SurfaceLayout = layout; Model = model }, info
+
+        {
+            Assembly = assembly
+            KernelType = kernelType
+            SurfaceLayout = layout
+            Model = model
+        },
+        info
 
     let buildSource (model: Model) : string * SurfaceLayout * AdjointInfo =
         let layout = CompilerCommon.layoutSurfaces model

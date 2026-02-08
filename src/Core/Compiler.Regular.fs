@@ -45,7 +45,7 @@ module CompilerRegular =
         CompilerCodegen.emitBernoullis sb model "seed"
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         line "        }"
-        linef "        output[idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
+        CompilerCodegen.emitWithPreamble sb layout model.Result (sprintf "        output[idx] = %s;")
         line "    }"
         sb.ToString()
 
@@ -59,7 +59,10 @@ module CompilerRegular =
         line "        ArrayView1D<float, Stride1D.Dense> output,"
         line "        ArrayView1D<float, Stride1D.Dense> surfaces,"
         line "        ArrayView1D<float, Stride1D.Dense> obsBuffer,"
-        line "        int steps, int normalCount, int uniformCount, int bernoulliCount, int numSims, int numObs, int interval, int indexOffset)"
+
+        line
+            "        int steps, int normalCount, int uniformCount, int bernoulliCount, int numSims, int numObs, int interval, int indexOffset)"
+
         line "    {"
         line "        int idx = (int)index;"
         line "        int seed = idx + indexOffset;"
@@ -74,7 +77,7 @@ module CompilerRegular =
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         CompilerCodegen.emitObserverRecording sb model layout "obsBuffer" "numSims"
         line "        }"
-        linef "        output[idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
+        CompilerCodegen.emitWithPreamble sb layout model.Result (sprintf "        output[idx] = %s;")
         line "    }"
         sb.ToString()
 
@@ -99,7 +102,7 @@ module CompilerRegular =
         CompilerCodegen.emitUniforms sb model "seed"
         CompilerCodegen.emitBernoullis sb model "seed"
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
-        linef "            output[t * numSims + idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
+        CompilerCodegen.emitWithPreamble sb layout model.Result (sprintf "            output[t * numSims + idx] = %s;")
         line "        }"
         line "    }"
         sb.ToString()
@@ -109,12 +112,14 @@ module CompilerRegular =
     // ══════════════════════════════════════════════════════════════════
 
     let generateSource (model: Model) (layout: SurfaceLayout) (sortedAccums: (int * AccumDef) list) : string =
-        [ CompilerCodegen.csPreamble
-          CompilerCodegen.emitHelpers layout
-          emitFoldKernel model layout sortedAccums
-          emitFoldWatchKernel model layout sortedAccums
-          emitScanKernel model layout sortedAccums
-          "}" ]
+        [
+            CompilerCodegen.csPreamble
+            CompilerCodegen.emitHelpers layout
+            emitFoldKernel model layout sortedAccums
+            emitFoldWatchKernel model layout sortedAccums
+            emitScanKernel model layout sortedAccums
+            "}"
+        ]
         |> String.concat "\n"
 
     // ══════════════════════════════════════════════════════════════════
@@ -125,16 +130,18 @@ module CompilerRegular =
         let tree = CSharpSyntaxTree.ParseText(source)
 
         let refs =
-            [| typeof<obj>.Assembly.Location
-               typeof<MathF>.Assembly.Location
-               typeof<Console>.Assembly.Location
-               typeof<ILGPU.Index1D>.Assembly.Location
-               typeof<ILGPU.Runtime.Accelerator>.Assembly.Location
+            [|
+                typeof<obj>.Assembly.Location
+                typeof<MathF>.Assembly.Location
+                typeof<Console>.Assembly.Location
+                typeof<ILGPU.Index1D>.Assembly.Location
+                typeof<ILGPU.Runtime.Accelerator>.Assembly.Location
             |]
             |> Array.append (
                 AppDomain.CurrentDomain.GetAssemblies()
                 |> Array.filter (fun a -> not a.IsDynamic && not (String.IsNullOrWhiteSpace a.Location))
-                |> Array.map (fun a -> a.Location))
+                |> Array.map (fun a -> a.Location)
+            )
             |> Array.distinct
             |> Array.map (fun loc -> MetadataReference.CreateFromFile(loc) :> MetadataReference)
 
@@ -150,11 +157,13 @@ module CompilerRegular =
 
         if not result.Success then
             ms.Dispose()
+
             let errors =
                 result.Diagnostics
                 |> Seq.filter (fun d -> d.Severity = DiagnosticSeverity.Error)
                 |> Seq.map (fun d -> d.ToString())
                 |> String.concat "\n"
+
             failwithf "Roslyn compilation failed:\n%s\n\nSource:\n%s" errors source
 
         ms.Seek(0L, SeekOrigin.Begin) |> ignore
@@ -174,7 +183,13 @@ module CompilerRegular =
         let source = generateSource model layout sorted
         let assembly = compile source
         let kernelType = assembly.GetType("GeneratedKernel")
-        { Assembly = assembly; KernelType = kernelType; SurfaceLayout = layout; Model = model }
+
+        {
+            Assembly = assembly
+            KernelType = kernelType
+            SurfaceLayout = layout
+            Model = model
+        }
 
     let buildSource (model: Model) : string * SurfaceLayout =
         let layout = CompilerCommon.layoutSurfaces model

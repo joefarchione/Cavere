@@ -69,22 +69,46 @@ module Symbolic =
         // ── Recursive simplification for binary ops ──
         | Add(a, b) ->
             let a', b' = simplify a, simplify b
-            if a' <> a || b' <> b then simplify (Add(a', b')) else Add(a', b')
+
+            if a' <> a || b' <> b then
+                simplify (Add(a', b'))
+            else
+                Add(a', b')
         | Sub(a, b) ->
             let a', b' = simplify a, simplify b
-            if a' <> a || b' <> b then simplify (Sub(a', b')) else Sub(a', b')
+
+            if a' <> a || b' <> b then
+                simplify (Sub(a', b'))
+            else
+                Sub(a', b')
         | Mul(a, b) ->
             let a', b' = simplify a, simplify b
-            if a' <> a || b' <> b then simplify (Mul(a', b')) else Mul(a', b')
+
+            if a' <> a || b' <> b then
+                simplify (Mul(a', b'))
+            else
+                Mul(a', b')
         | Div(a, b) ->
             let a', b' = simplify a, simplify b
-            if a' <> a || b' <> b then simplify (Div(a', b')) else Div(a', b')
+
+            if a' <> a || b' <> b then
+                simplify (Div(a', b'))
+            else
+                Div(a', b')
         | Max(a, b) ->
             let a', b' = simplify a, simplify b
-            if a' <> a || b' <> b then simplify (Max(a', b')) else Max(a', b')
+
+            if a' <> a || b' <> b then
+                simplify (Max(a', b'))
+            else
+                Max(a', b')
         | Min(a, b) ->
             let a', b' = simplify a, simplify b
-            if a' <> a || b' <> b then simplify (Min(a', b')) else Min(a', b')
+
+            if a' <> a || b' <> b then
+                simplify (Min(a', b'))
+            else
+                Min(a', b')
         | Gt(a, b) ->
             let a', b' = simplify a, simplify b
             if a' <> a || b' <> b then Gt(a', b') else expr
@@ -101,8 +125,11 @@ module Symbolic =
         // ── Recursive simplification for ternary ops ──
         | Select(c, t, f) ->
             let c', t', f' = simplify c, simplify t, simplify f
-            if c' <> c || t' <> t || f' <> f then simplify (Select(c', t', f'))
-            else Select(c', t', f')
+
+            if c' <> c || t' <> t || f' <> f then
+                simplify (Select(c', t', f'))
+            else
+                Select(c', t', f')
 
         // ── Recursive simplification for unary ops ──
         | Neg a ->
@@ -124,6 +151,36 @@ module Symbolic =
             let a' = simplify a
             if a' <> a then simplify (Floor a') else Floor a'
 
+        // ── Cond simplification ──
+        | Cond(cases, d) ->
+            let cases' = cases |> List.map (fun (c, v) -> (simplify c, simplify v))
+            let d' = simplify d
+            // If all conditions are Const, evaluate statically
+            let allConst =
+                cases'
+                |> List.forall (fun (c, _) ->
+                    match c with
+                    | Const _ -> true
+                    | _ -> false)
+
+            if allConst then
+                match
+                    cases'
+                    |> List.tryFind (fun (c, _) ->
+                        match c with
+                        | Const cv -> cv > 0.5f
+                        | _ -> false)
+                with
+                | Some(_, v) -> v
+                | None -> d'
+            else
+                let changed = cases' <> cases || d' <> d
+
+                if changed then
+                    simplify (Cond(cases', d'))
+                else
+                    Cond(cases', d')
+
         // ── Leaf nodes and others pass through ──
         | _ -> expr
 
@@ -132,10 +189,12 @@ module Symbolic =
         let mutable current = expr
         let mutable prev = Const System.Single.NaN // sentinel
         let mutable iterations = 0
+
         while current <> prev && iterations < 100 do
             prev <- current
             current <- simplify current
             iterations <- iterations + 1
+
         current
 
     // ══════════════════════════════════════════════════════════════════
@@ -145,14 +204,39 @@ module Symbolic =
     /// Count AST nodes in an expression.
     let rec countNodes (expr: Expr) : int =
         match expr with
-        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> 1
-        | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> 1 + countNodes a
+        | Const _
+        | TimeIndex
+        | Normal _
+        | Uniform _
+        | Bernoulli _
+        | AccumRef _
+        | Lookup1D _
+        | BatchRef _
+        | Dual _
+        | HyperDual _ -> 1
+        | Floor a
+        | Neg a
+        | Exp a
+        | Log a
+        | Sqrt a
+        | Abs a -> 1 + countNodes a
         | SurfaceAt(_, idx) -> 1 + countNodes idx
-        | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)
-        | Max(a, b) | Min(a, b) | Gt(a, b) | Gte(a, b) | Lt(a, b) | Lte(a, b) ->
-            1 + countNodes a + countNodes b
+        | Add(a, b)
+        | Sub(a, b)
+        | Mul(a, b)
+        | Div(a, b)
+        | Max(a, b)
+        | Min(a, b)
+        | Gt(a, b)
+        | Gte(a, b)
+        | Lt(a, b)
+        | Lte(a, b) -> 1 + countNodes a + countNodes b
         | Select(c, t, f) -> 1 + countNodes c + countNodes t + countNodes f
         | BinSearch(_, _, _, v) -> 1 + countNodes v
+        | Cond(cases, d) ->
+            cases
+            |> List.sumBy (fun (c, v) -> countNodes c + countNodes v)
+            |> (+) (countNodes d + 1)
 
     // ══════════════════════════════════════════════════════════════════
     // Symbolic Differentiation
@@ -166,7 +250,8 @@ module Symbolic =
         match expr with
         // ── Leaf nodes ──
         | Const _ -> Const 0.0f
-        | Dual(idx, _, _) | HyperDual(idx, _, _) -> if idx = wrt then Const 1.0f else Const 0.0f
+        | Dual(idx, _, _)
+        | HyperDual(idx, _, _) -> if idx = wrt then Const 1.0f else Const 0.0f
         | TimeIndex -> Const 0.0f
         | Normal _ -> Const 0.0f
         | Uniform _ -> Const 0.0f
@@ -183,13 +268,10 @@ module Symbolic =
         | Sub(a, b) -> Sub(symbolicDiff a wrt, symbolicDiff b wrt)
 
         // ── Product rule ──
-        | Mul(a, b) ->
-            Add(Mul(symbolicDiff a wrt, b), Mul(a, symbolicDiff b wrt))
+        | Mul(a, b) -> Add(Mul(symbolicDiff a wrt, b), Mul(a, symbolicDiff b wrt))
 
         // ── Quotient rule ──
-        | Div(a, b) ->
-            Div(Sub(Mul(symbolicDiff a wrt, b), Mul(a, symbolicDiff b wrt)),
-                Mul(b, b))
+        | Div(a, b) -> Div(Sub(Mul(symbolicDiff a wrt, b), Mul(a, symbolicDiff b wrt)), Mul(b, b))
 
         // ── Chain rule for unary ──
         | Exp(a) -> Mul(Exp(a), symbolicDiff a wrt)
@@ -206,19 +288,23 @@ module Symbolic =
         | Min(a, b) -> Select(Lt(a, b), symbolicDiff a wrt, symbolicDiff b wrt)
 
         // ── Comparison operators (piecewise constant) ──
-        | Gt _ | Gte _ | Lt _ | Lte _ -> Const 0.0f
+        | Gt _
+        | Gte _
+        | Lt _
+        | Lte _ -> Const 0.0f
 
         // ── Select (assume condition independent of wrt) ──
-        | Select(cond, t, f) ->
-            Select(cond, symbolicDiff t wrt, symbolicDiff f wrt)
+        | Select(cond, t, f) -> Select(cond, symbolicDiff t wrt, symbolicDiff f wrt)
 
         // ── Surface lookups: treat as opaque ──
         | SurfaceAt _ -> Const 0.0f
         | BinSearch _ -> Const 0.0f
 
+        // ── Cond: differentiate values, conditions are piecewise constant ──
+        | Cond(cases, d) -> Cond(cases |> List.map (fun (c, v) -> (c, symbolicDiff v wrt)), symbolicDiff d wrt)
+
     /// Differentiate and simplify.
-    let diff (expr: Expr) (wrt: int) : Expr =
-        symbolicDiff expr wrt |> fullySimplify
+    let diff (expr: Expr) (wrt: int) : Expr = symbolicDiff expr wrt |> fullySimplify
 
     // ══════════════════════════════════════════════════════════════════
     // Expression Tree Utilities
@@ -228,35 +314,105 @@ module Symbolic =
     let rec containsTimeIndex (expr: Expr) : bool =
         match expr with
         | TimeIndex -> true
-        | Const _ | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> false
-        | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> containsTimeIndex a
+        | Const _
+        | Normal _
+        | Uniform _
+        | Bernoulli _
+        | AccumRef _
+        | Lookup1D _
+        | BatchRef _
+        | Dual _
+        | HyperDual _ -> false
+        | Floor a
+        | Neg a
+        | Exp a
+        | Log a
+        | Sqrt a
+        | Abs a -> containsTimeIndex a
         | SurfaceAt(_, idx) -> containsTimeIndex idx
-        | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)
-        | Max(a, b) | Min(a, b) | Gt(a, b) | Gte(a, b) | Lt(a, b) | Lte(a, b) ->
-            containsTimeIndex a || containsTimeIndex b
+        | Add(a, b)
+        | Sub(a, b)
+        | Mul(a, b)
+        | Div(a, b)
+        | Max(a, b)
+        | Min(a, b)
+        | Gt(a, b)
+        | Gte(a, b)
+        | Lt(a, b)
+        | Lte(a, b) -> containsTimeIndex a || containsTimeIndex b
         | Select(c, t, f) -> containsTimeIndex c || containsTimeIndex t || containsTimeIndex f
         | BinSearch(_, _, _, v) -> containsTimeIndex v
+        | Cond(cases, d) ->
+            cases |> List.exists (fun (c, v) -> containsTimeIndex c || containsTimeIndex v)
+            || containsTimeIndex d
 
     let rec containsLookup1D (expr: Expr) : bool =
         match expr with
         | Lookup1D _ -> true
-        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | AccumRef _ | BatchRef _ | Dual _ | HyperDual _ -> false
-        | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> containsLookup1D a
+        | Const _
+        | TimeIndex
+        | Normal _
+        | Uniform _
+        | Bernoulli _
+        | AccumRef _
+        | BatchRef _
+        | Dual _
+        | HyperDual _ -> false
+        | Floor a
+        | Neg a
+        | Exp a
+        | Log a
+        | Sqrt a
+        | Abs a -> containsLookup1D a
         | SurfaceAt(_, idx) -> containsLookup1D idx
-        | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)
-        | Max(a, b) | Min(a, b) | Gt(a, b) | Gte(a, b) | Lt(a, b) | Lte(a, b) ->
-            containsLookup1D a || containsLookup1D b
+        | Add(a, b)
+        | Sub(a, b)
+        | Mul(a, b)
+        | Div(a, b)
+        | Max(a, b)
+        | Min(a, b)
+        | Gt(a, b)
+        | Gte(a, b)
+        | Lt(a, b)
+        | Lte(a, b) -> containsLookup1D a || containsLookup1D b
         | Select(c, t, f) -> containsLookup1D c || containsLookup1D t || containsLookup1D f
         | BinSearch(_, _, _, v) -> containsLookup1D v
+        | Cond(cases, d) ->
+            cases |> List.exists (fun (c, v) -> containsLookup1D c || containsLookup1D v)
+            || containsLookup1D d
 
     let rec containsAccumRef (expr: Expr) (id: int) : bool =
         match expr with
         | AccumRef aid -> aid = id
-        | Const _ | TimeIndex | Normal _ | Uniform _ | Bernoulli _ | Lookup1D _ | BatchRef _ | Dual _ | HyperDual _ -> false
-        | Floor a | Neg a | Exp a | Log a | Sqrt a | Abs a -> containsAccumRef a id
+        | Const _
+        | TimeIndex
+        | Normal _
+        | Uniform _
+        | Bernoulli _
+        | Lookup1D _
+        | BatchRef _
+        | Dual _
+        | HyperDual _ -> false
+        | Floor a
+        | Neg a
+        | Exp a
+        | Log a
+        | Sqrt a
+        | Abs a -> containsAccumRef a id
         | SurfaceAt(_, idx) -> containsAccumRef idx id
-        | Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b)
-        | Max(a, b) | Min(a, b) | Gt(a, b) | Gte(a, b) | Lt(a, b) | Lte(a, b) ->
-            containsAccumRef a id || containsAccumRef b id
+        | Add(a, b)
+        | Sub(a, b)
+        | Mul(a, b)
+        | Div(a, b)
+        | Max(a, b)
+        | Min(a, b)
+        | Gt(a, b)
+        | Gte(a, b)
+        | Lt(a, b)
+        | Lte(a, b) -> containsAccumRef a id || containsAccumRef b id
         | Select(c, t, f) -> containsAccumRef c id || containsAccumRef t id || containsAccumRef f id
         | BinSearch(_, _, _, v) -> containsAccumRef v id
+        | Cond(cases, d) ->
+            cases
+            |> List.exists (fun (c, v) -> containsAccumRef c id || containsAccumRef v id)
+            || containsAccumRef d id

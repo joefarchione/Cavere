@@ -36,7 +36,7 @@ module CompilerBatch =
         CompilerCodegen.emitBernoullis sb model "seed"
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         line "        }"
-        linef "        output[idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
+        CompilerCodegen.emitWithPreamble sb layout model.Result (sprintf "        output[idx] = %s;")
         line "    }"
         sb.ToString()
 
@@ -50,7 +50,10 @@ module CompilerBatch =
         line "        ArrayView1D<float, Stride1D.Dense> output,"
         line "        ArrayView1D<float, Stride1D.Dense> surfaces,"
         line "        ArrayView1D<float, Stride1D.Dense> obsBuffer,"
-        line "        int steps, int normalCount, int uniformCount, int bernoulliCount, int numSims, int numObs, int interval, int totalThreads, int indexOffset)"
+
+        line
+            "        int steps, int normalCount, int uniformCount, int bernoulliCount, int numSims, int numObs, int interval, int totalThreads, int indexOffset)"
+
         line "    {"
         line "        int idx = (int)index;"
         line "        int batchIdx = idx / numSims;"
@@ -67,7 +70,7 @@ module CompilerBatch =
         CompilerCodegen.emitAccumUpdates sb layout sortedAccums
         CompilerCodegen.emitObserverRecording sb model layout "obsBuffer" "totalThreads"
         line "        }"
-        linef "        output[idx] = %s;" (CompilerCommon.emitExpr layout model.Result)
+        CompilerCodegen.emitWithPreamble sb layout model.Result (sprintf "        output[idx] = %s;")
         line "    }"
         sb.ToString()
 
@@ -76,11 +79,13 @@ module CompilerBatch =
     // ══════════════════════════════════════════════════════════════════
 
     let generateSource (model: Model) (layout: SurfaceLayout) (sortedAccums: (int * AccumDef) list) : string =
-        [ CompilerCodegen.csPreamble
-          CompilerCodegen.emitHelpers layout
-          emitFoldBatchKernel model layout sortedAccums
-          emitFoldBatchWatchKernel model layout sortedAccums
-          "}" ]
+        [
+            CompilerCodegen.csPreamble
+            CompilerCodegen.emitHelpers layout
+            emitFoldBatchKernel model layout sortedAccums
+            emitFoldBatchWatchKernel model layout sortedAccums
+            "}"
+        ]
         |> String.concat "\n"
 
     // ══════════════════════════════════════════════════════════════════
@@ -94,7 +99,13 @@ module CompilerBatch =
         let source = generateSource model layout sorted
         let assembly = CompilerRegular.compile source
         let kernelType = assembly.GetType("GeneratedKernel")
-        { Assembly = assembly; KernelType = kernelType; SurfaceLayout = layout; Model = model }
+
+        {
+            Assembly = assembly
+            KernelType = kernelType
+            SurfaceLayout = layout
+            Model = model
+        }
 
     let buildSource (model: Model) : string * SurfaceLayout =
         let layout = CompilerCommon.layoutSurfaces model
