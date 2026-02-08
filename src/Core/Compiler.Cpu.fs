@@ -285,6 +285,53 @@ module CompilerCpu =
         line "    }"
         sb.ToString()
 
+    let private emitFoldAntitheticKernel (model: Model) (layout: SurfaceLayout) (sortedAccums: (int * AccumDef) list) =
+        let sb = Text.StringBuilder()
+        let line (s: string) = sb.AppendLine(s) |> ignore
+        let linef fmt = Printf.kprintf line fmt
+        let resultExpr = CompilerCommon.emitExpr layout model.Result
+        line ""
+        line "    public static void FoldAntithetic("
+        line "        float[] output, float[] surfaces,"
+        line "        int steps, int normalCount, int uniformCount, int bernoulliCount)"
+        line "    {"
+        line "        int numScenarios = output.Length;"
+        line "        Parallel.For(0, numScenarios, idx => {"
+        line "            int seed = idx;"
+        line "            int t;"
+        // Path 1: normal z
+        CompilerCodegen.emitAccumDecls sb layout sortedAccums
+        line ""
+        line "            for (t = 0; t < steps; t++)"
+        line "            {"
+        CompilerCodegen.emitNormals sb model "seed"
+        CompilerCodegen.emitUniforms sb model "seed"
+        CompilerCodegen.emitBernoullis sb model "seed"
+        CompilerCodegen.emitAccumUpdates sb layout sortedAccums
+        line "            }"
+        linef "            float result1 = %s;" resultExpr
+        line ""
+        // Path 2: negated z (re-init accums, same seed)
+        line "            // Antithetic path: negated normals"
+
+        for (id, def) in sortedAccums do
+            linef "            accum_%d = %s;" id (CompilerCommon.emitExpr layout def.Init)
+
+        line ""
+        line "            for (t = 0; t < steps; t++)"
+        line "            {"
+        CompilerCodegen.emitNormalsNegated sb model "seed"
+        CompilerCodegen.emitUniforms sb model "seed"
+        CompilerCodegen.emitBernoullis sb model "seed"
+        CompilerCodegen.emitAccumUpdates sb layout sortedAccums
+        line "            }"
+        linef "            float result2 = %s;" resultExpr
+        line ""
+        line "            output[idx] = (result1 + result2) * 0.5f;"
+        line "        });"
+        line "    }"
+        sb.ToString()
+
     // ══════════════════════════════════════════════════════════════════
     // Source Generation
     // ══════════════════════════════════════════════════════════════════
@@ -325,9 +372,11 @@ module CompilerCpu =
 
     let private stableHash (s: string) =
         let mutable h = 0x811c9dc5u
+
         for c in s do
             h <- h ^^^ uint32 c
             h <- h * 0x01000193u
+
         sprintf "%08X" h
 
     let compile (source: string) : Assembly =
@@ -474,3 +523,35 @@ module CompilerCpu =
         let info = CompilerAdjoint.computeAdjointInfo model
         let source = generateAdjointSource model layout info
         source, layout, info
+
+    // ── Antithetic variant ──────────────────────────────────────────
+
+    let generateAntitheticSource (model: Model) (layout: SurfaceLayout) (sortedAccums: (int * AccumDef) list) : string =
+        [
+            csPreamble
+            CompilerCodegen.emitCpuHelpers layout
+            emitFoldAntitheticKernel model layout sortedAccums
+            "}"
+        ]
+        |> String.concat "\n"
+
+    let buildAntithetic (model: Model) : CompiledKernel =
+        CompilerCommon.validate model
+        let layout = CompilerCommon.layoutSurfaces model
+        let sorted = CompilerCommon.sortAccums model.Accums
+        let source = generateAntitheticSource model layout sorted
+        let assembly = compile source
+        let kernelType = assembly.GetType("GeneratedKernel")
+
+        {
+            Assembly = assembly
+            KernelType = kernelType
+            SurfaceLayout = layout
+            Model = model
+        }
+
+    let buildAntitheticSource (model: Model) : string * SurfaceLayout =
+        let layout = CompilerCommon.layoutSurfaces model
+        let sorted = CompilerCommon.sortAccums model.Accums
+        let source = generateAntitheticSource model layout sorted
+        source, layout

@@ -36,3 +36,9 @@ module Compiler =
     let buildBatchCpuSource = CompilerCpu.buildBatchSource
     let buildAdjointCpu = CompilerCpu.buildAdjoint
     let buildAdjointCpuSource = CompilerCpu.buildAdjointSource
+
+    // ── Antithetic compilation ──
+    let buildAntithetic = CompilerRegular.buildAntithetic
+    let buildAntitheticSource = CompilerRegular.buildAntitheticSource
+    let buildAntitheticCpu = CompilerCpu.buildAntithetic
+    let buildAntitheticCpuSource = CompilerCpu.buildAntitheticSource

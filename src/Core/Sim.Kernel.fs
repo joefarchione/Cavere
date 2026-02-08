@@ -12,6 +12,8 @@ module Kernel =
     let private batchCache = ConditionalWeakTable<Model, CompiledKernel>()
     let private cpuCache = ConditionalWeakTable<Model, CompiledKernel>()
     let private cpuBatchCache = ConditionalWeakTable<Model, CompiledKernel>()
+    let private antitheticCache = ConditionalWeakTable<Model, CompiledKernel>()
+    let private antitheticCpuCache = ConditionalWeakTable<Model, CompiledKernel>()
 
     // ── Auto-expand Dual/HyperDual ────────────────────────────────────
 
@@ -119,3 +121,21 @@ module Kernel =
             failwithf "Model batch size (%d) does not match expected (%d)" m.BatchSize numBatch
 
         cpuBatchCache.GetValue(m, ConditionalWeakTable<_, _>.CreateValueCallback(Compiler.buildBatchCpu))
+
+    // ── Antithetic ─────────────────────────────────────────────────
+
+    /// Compile a non-batch model to an antithetic kernel (auto-expands Dual/HyperDual, cached).
+    let compileAntithetic (m: Model) : CompiledKernel =
+        requireSimple m
+        let expanded = autoExpandDiffVars m
+        antitheticCache.GetValue(expanded, ConditionalWeakTable<_, _>.CreateValueCallback(Compiler.buildAntithetic))
+
+    /// Compile a non-batch model to a native CPU antithetic kernel (auto-expands Dual/HyperDual, cached).
+    let compileAntitheticCpu (m: Model) : CompiledKernel =
+        requireSimple m
+        let expanded = autoExpandDiffVars m
+
+        antitheticCpuCache.GetValue(
+            expanded,
+            ConditionalWeakTable<_, _>.CreateValueCallback(Compiler.buildAntitheticCpu)
+        )
