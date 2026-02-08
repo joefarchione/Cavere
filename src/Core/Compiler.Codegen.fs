@@ -114,7 +114,12 @@ module CompilerCodegen =
 
     let emitHelpers (_layout: SurfaceLayout) = [ csHash; csToFloat; csBoxMuller; csFindBin ] |> String.concat "\n"
 
-    let emitCpuHelpers (_layout: SurfaceLayout) = [ csHash; csToFloat; csBoxMuller; csCpuFindBin ] |> String.concat "\n"
+    let private inlineAttr = "    [MethodImpl(MethodImplOptions.AggressiveInlining)]"
+
+    let emitCpuHelpers (_layout: SurfaceLayout) =
+        [ csHash; csToFloat; csBoxMuller; csCpuFindBin ]
+        |> List.map (fun h -> inlineAttr + "\n" + h)
+        |> String.concat "\n"
 
     let emitAccumDecls (sb: Text.StringBuilder) (layout: SurfaceLayout) (sortedAccums: (int * AccumDef) list) =
         for (id, def) in sortedAccums do
