@@ -124,6 +124,41 @@ module Engine =
         let flat = output.GetAsArray1D()
         Array2D.init steps numScenarios (fun t s -> flat.[t * numScenarios + s])
 
+    // ── Antithetic kernels ──────────────────────────────────────────────
+
+    let foldAntithetic
+        (accel: Accelerator)
+        (kernel: CompiledKernel)
+        (numScenarios: int)
+        (steps: int)
+        (indexOffset: int)
+        : float32[] =
+
+        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
+        use surfBuf = accel.Allocate1D<float32>(max 1 packed.Length)
+        surfBuf.View.CopyFromCPU(packed)
+        use output = accel.Allocate1D<float32>(numScenarios)
+
+        let methodInfo = getMethod kernel "FoldAntithetic"
+        let k = accel.LoadAutoGroupedKernel(methodInfo)
+
+        k.Launch<Index1D>(
+            accel.DefaultStream,
+            Index1D(numScenarios),
+            [|
+                output.View :> obj
+                surfBuf.View :> obj
+                steps :> obj
+                kernel.Model.NormalCount :> obj
+                kernel.Model.UniformCount :> obj
+                kernel.Model.BernoulliCount :> obj
+                indexOffset :> obj
+            |]
+        )
+
+        accel.Synchronize()
+        output.GetAsArray1D()
+
     // ── Batch kernels ──────────────────────────────────────────────────
 
     let foldBatch
@@ -587,3 +622,23 @@ module Engine =
 
         let adjoints = Array2D.init numScenarios numDiffVars (fun s d -> adjointOut.[s * numDiffVars + d])
         output, adjoints
+
+    let foldAntitheticCpu (kernel: CompiledKernel) (numScenarios: int) (steps: int) : float32[] =
+        let packed = Compiler.packSurfaces kernel.Model kernel.SurfaceLayout
+        let output = Array.zeroCreate<float32> numScenarios
+        let methodInfo = getMethod kernel "FoldAntithetic"
+
+        methodInfo.Invoke(
+            null,
+            [|
+                output :> obj
+                packed :> obj
+                steps :> obj
+                kernel.Model.NormalCount :> obj
+                kernel.Model.UniformCount :> obj
+                kernel.Model.BernoulliCount :> obj
+            |]
+        )
+        |> ignore
+
+        output

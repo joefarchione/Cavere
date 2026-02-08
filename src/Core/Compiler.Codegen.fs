@@ -135,6 +135,20 @@ module CompilerCodegen =
             )
             |> ignore
 
+    let emitNormalsNegated (sb: Text.StringBuilder) (model: Model) (seedVar: string) =
+        for n in 0 .. model.NormalCount - 1 do
+            sb.AppendLine(sprintf "            float z_%d = -BoxMuller(" n) |> ignore
+
+            sb.AppendLine(
+                sprintf "                ToFloat(Hash(%s * 6364136 + t * 2 * normalCount + %d))," seedVar (n * 2)
+            )
+            |> ignore
+
+            sb.AppendLine(
+                sprintf "                ToFloat(Hash(%s * 6364136 + t * 2 * normalCount + %d)));" seedVar (n * 2 + 1)
+            )
+            |> ignore
+
     let emitUniforms (sb: Text.StringBuilder) (model: Model) (seedVar: string) =
         for n in 0 .. model.UniformCount - 1 do
             sb.AppendLine(
